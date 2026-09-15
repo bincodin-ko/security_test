@@ -1,0 +1,42 @@
+rules:
+  - id: hardcoded-payment-credential
+    pattern-regex: "PAYMENT_API_KEY\\s*=\\s*'[^']+'"
+    message: "[D1] Hardcoded payment credential"
+    languages: [generic]
+    severity: ERROR
+  - id: weak-secret
+    pattern-regex: "JWT_SECRET\\s*=\\s*'secret'"
+    message: "[D11] Weak/default JWT secret"
+    languages: [generic]
+    severity: ERROR
+  - id: md5-hash
+    pattern: crypto.createHash("md5")
+    message: "[A11] MD5 used for password hashing"
+    languages: [js]
+    severity: WARNING
+  - id: sql-template-injection
+    pattern: $DB.prepare(`...`)
+    message: "[F1/F2] SQL built with template literal"
+    languages: [js]
+    severity: ERROR
+  - id: cors-wildcard
+    pattern: $R.setHeader("Access-Control-Allow-Origin", "*")
+    message: "[H5] CORS wildcard"
+    languages: [js]
+    severity: WARNING
+  - id: stack-to-client
+    pattern: $E.stack
+    message: "[E9] Stack trace referenced in response"
+    languages: [js]
+    severity: WARNING
+  - id: powered-by
+    pattern: $R.setHeader("X-Powered-By", ...)
+    message: "[M6] Version disclosure header"
+    languages: [js]
+    severity: INFO
+  - id: idor-heuristic
+    patterns:
+      - pattern: $DB.prepare($Q).get($REQ.params.id)
+    message: "[B1?] HEURISTIC fetch-by-param-id (cannot tell if guarded)"
+    languages: [js]
+    severity: WARNING
