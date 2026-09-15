@@ -117,5 +117,29 @@ app.get('/api/debug/config', (req, res) => {
   res.json({ jwt_secret: JWT_SECRET, payment_key: PAYMENT_API_KEY, env: 'production' });
 });
 
+
+// ─── NEW ENDPOINTS, added after the engine was written ───────────────────
+// The invariant engine has never been told these exist and has no rule
+// naming any of them. Discovery + I1..I6 must catch them on their own.
+
+db.exec(`CREATE TABLE workspaces (id INTEGER PRIMARY KEY, owner_id INTEGER, name TEXT, api_token TEXT);
+         CREATE TABLE reports (id INTEGER PRIMARY KEY, owner_id INTEGER, revenue INTEGER);`);
+db.prepare("INSERT INTO workspaces VALUES (1,1,'Alice Corp','wtok_alice_9f3a2b1c8d7e6f5a4b3c2d1e')").run();
+db.prepare("INSERT INTO workspaces VALUES (2,2,'Bob Inc','wtok_bob_1a2b3c4d5e6f7a8b9c0d1e2f')").run();
+db.prepare("INSERT INTO reports VALUES (1,1,5000000)").run();
+db.prepare("INSERT INTO reports VALUES (2,2,300000)").run();
+
+app.get('/api/v2/workspaces/:id', auth, (req, res) => {
+  res.json(db.prepare('SELECT * FROM workspaces WHERE id = ?').get(req.params.id));
+});
+
+app.get('/api/reports/:id/export', auth, (req, res) => {
+  res.json(db.prepare('SELECT * FROM reports WHERE id = ?').get(req.params.id));
+});
+
+app.get('/api/internal/metrics', (req, res) => {
+  res.json({ signups_today: 42, db_password: 'prod_db_pw_7Kx9mQ2vL', active_sessions: tokens.size });
+});
+
 module.exports = app;
 if (require.main === module) app.listen(3000, '127.0.0.1', () => console.log('vulnapp on 3000'));
