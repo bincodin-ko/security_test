@@ -65,17 +65,50 @@ class Sandbox {
       .replace(IDPREFIX_RE, m => m.split('_')[0] + '_…[redacted]');
   }
 
-  /** Run untrusted code. Docker driver when available; refuses otherwise. */
-  async run(cmd, args, { image = 'node:22-alpine' } = {}) {
+  /**
+   * Run untrusted code (a generated exploit, a customer snippet) with real
+   * isolation. Driver order: explicit 'e2b' > 'docker' > refuse.
+   * `runExploit({script, runtime})` is the high-level entry the fix/verify
+   * loop uses; `run(cmd, args)` is the low-level docker path.
+   */
+  async runExploit({ script, runtime = 'node', e2b = {} } = {}) {
+    if (this.driver === 'e2b') {
+      const { E2BRunner } = require('./e2b-driver');
+      const runner = new E2BRunner({ timeoutMs: this.timeoutMs, allowInternet: false, ...e2b });
+      return runner.runExploit({ script, runtime });
+    }
+    if (this.driver === 'docker') {
+      const fs = require('fs'), os = require('os'), path = require('path');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'box-'));
+      const file = path.join(dir, runtime === 'python' ? 'x.py' : 'x.js');
+      fs.writeFileSync(file, script);
+      const image = runtime === 'python' ? 'python:3.12-alpine' : 'node:22-alpine';
+      const cmd = runtime === 'python' ? 'python3' : 'node';
+      const out = await this.run(cmd, [`/w/${path.basename(file)}`], { image, mount: dir });
+      return { exitCode: 0, stdout: Sandbox.redact(out.stdout || ''), stderr: Sandbox.redact(out.stderr || ''), isolated: true };
+    }
+    throw new Error('refusing to execute untrusted code without container isolation (set driver: "e2b" or "docker")');
+  }
+
+  /** Low-level docker exec. */
+  async run(cmd, args, { image = 'node:22-alpine', mount = null } = {}) {
     if (this.driver !== 'docker')
       throw new Error('refusing to execute untrusted code without container isolation');
+    const mountArgs = mount ? ['-v', `${mount}:/w:ro`, '-w', '/w'] : [];
     return new Promise((res, rej) => {
       execFile('docker', ['run', '--rm', '--network=none', '--read-only',
         '--memory=512m', '--cpus=1', '--pids-limit=128',
         '--cap-drop=ALL', '--security-opt=no-new-privileges',
-        image, cmd, ...args],
+        ...mountArgs, image, cmd, ...args],
         { timeout: this.timeoutMs }, (e, so, se) => e ? rej(e) : res({ stdout: so, stderr: se }));
     });
+  }
+
+  /** Which isolation drivers are usable right now? */
+  static async drivers() {
+    const out = { process: true, docker: await Sandbox.dockerAvailable(), e2b: false };
+    try { require('e2b'); out.e2b = !!process.env.E2B_API_KEY; } catch {}
+    return out;
   }
 
   static async dockerAvailable() {
