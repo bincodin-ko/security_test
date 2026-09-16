@@ -20,6 +20,9 @@ const PRIVATE = [
   /^172\.(1[6-9]|2\d|3[01])\./,
 ];
 const SECRET_RE = /((?:password|passwd|secret|token|api[_-]?key|authorization)"?\s*[:=]\s*"?)([^",\s}]{4,})/gi;
+// PII value patterns: email, and common secret-id prefixes (Stripe cus_/sk_, etc.)
+const EMAIL_RE = /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g;
+const IDPREFIX_RE = /\b((?:cus|sk|pk|rk|whsec|tok|card|acct)_[A-Za-z0-9]{2,})/g;
 
 class Sandbox {
   constructor({ allowHosts = [], maxRequests = 2000, timeoutMs = 10000,
@@ -56,7 +59,10 @@ class Sandbox {
 
   /** Never let a captured secret reach a report, a log, or an LLM prompt. */
   static redact(s) {
-    return String(s).replace(SECRET_RE, (_, k, v) => k + v.slice(0, 4) + '…[redacted]');
+    return String(s)
+      .replace(SECRET_RE, (_, k, v) => k + v.slice(0, 4) + '…[redacted]')
+      .replace(EMAIL_RE, m => m.slice(0, 2) + '…@…[redacted]')
+      .replace(IDPREFIX_RE, m => m.split('_')[0] + '_…[redacted]');
   }
 
   /** Run untrusted code. Docker driver when available; refuses otherwise. */
