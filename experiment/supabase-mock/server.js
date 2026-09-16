@@ -14,6 +14,10 @@ const http = require('http');
 
 const ANON = 'anon_pk_test_0000';
 const SERVICE = 'service_role_test_0000';
+// two logged-in user tokens (real Supabase: JWTs with a `sub` claim = user id)
+const USER_A = 'user_jwt_alice';   // maps to owner 1
+const USER_B = 'user_jwt_bob';     // maps to owner 2
+const USERID = { [USER_A]: 1, [USER_B]: 2 };
 
 // Ground-truth RLS states. mode = what's wrong (or 'secure').
 const TABLES = {
@@ -29,19 +33,26 @@ const TABLES = {
   // 4. SERVICE_ROLE required (secure to anon) but table holds secrets
   api_keys:  { mode: 'secure', rows: [ { id: 1, owner: 1, key: 'sk_live_xxx' } ] },
   // 5. SECURE - proper RLS, anon gets nothing. The control.
-  private_msgs: { mode: 'secure', rows: [ { id: 1, owner: 1, body: 'secret' } ] },
+  private_msgs: { mode: 'secure', rows: [ { id: 1, owner: 1, body: 'secret' }, { id: 2, owner: 2, body: 'bob msg' } ] },
+  // 6. auth.uid() MISUSE - policy is USING(auth.uid() IS NOT NULL): any logged-in
+  //    user sees ALL rows, not just their own. Invisible to anon (returns []).
+  documents: { mode: 'authuid_misuse', rows: [
+    { id: 1, owner: 1, content: 'alice doc' }, { id: 2, owner: 2, content: 'bob doc' } ] },
 };
 
 function rowsFor(table, key) {
   const t = TABLES[table];
   if (!t) return { status: 404, body: { message: `relation "${table}" does not exist` } };
   if (key === SERVICE) return { status: 200, body: t.rows };           // service_role bypasses RLS
-  // anon behaviour by mode:
+  const uid = USERID[key];                                             // undefined for anon
   switch (t.mode) {
-    case 'rls_off':      return { status: 200, body: t.rows };          // LEAK
-    case 'permissive':   return { status: 200, body: t.rows };          // LEAK
-    case 'partial_write':return { status: 200, body: t.rows.filter(r => r.owner === 0) }; // read ok (empty), write is the hole
-    case 'secure':       return { status: 200, body: [] };              // RLS returns empty to anon
+    case 'rls_off':      return { status: 200, body: t.rows };          // LEAK to everyone
+    case 'permissive':   return { status: 200, body: t.rows };          // LEAK to everyone
+    case 'partial_write':return { status: 200, body: t.rows.filter(r => r.owner === 0) };
+    case 'secure':       // correct: owner-scoped for users, empty for anon
+      return { status: 200, body: uid ? t.rows.filter(r => r.owner === uid) : [] };
+    case 'authuid_misuse': // BUG: any logged-in user sees ALL rows; anon sees none
+      return { status: 200, body: uid ? t.rows : [] };
     default:             return { status: 200, body: [] };
   }
 }

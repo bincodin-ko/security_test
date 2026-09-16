@@ -42,7 +42,7 @@ function looksSensitive(rows) {
   return Object.keys(rows[0] || {}).some(c => SECRET_COL.test(c));
 }
 
-async function audit({ base, anonKey, probeWrite = false }) {
+async function audit({ base, anonKey, probeWrite = false, userA = null, userB = null }) {
   const tables = await discoverTables(base, anonKey);
   const findings = [];
   const add = (f) => findings.push({ ...f, evidence: Sandbox.redact(f.evidence) });
@@ -88,6 +88,27 @@ async function audit({ base, anonKey, probeWrite = false }) {
           evidence: `POST with public anon key returned 201 Created`,
           fix: `Add INSERT/UPDATE/DELETE policies too. A SELECT-only policy leaves writes open. ` +
                `Every command (SELECT, INSERT, UPDATE, DELETE) needs its own policy.`,
+        });
+      }
+    }
+
+    // MODE 5: auth.uid() misuse - only visible with two logged-in accounts.
+    // The classic bug: policy is USING(auth.uid() IS NOT NULL) instead of
+    // USING(owner = auth.uid()), so any authenticated user reads EVERY row.
+    if (userA && userB && read.status === 200 && Array.isArray(read.body) && read.body.length === 0) {
+      // anon saw nothing (RLS active) - now check what each user sees
+      const asA = await req(base, table, { key: userA });
+      const asB = await req(base, table, { key: userB });
+      if (asA.status === 200 && asB.status === 200 &&
+          Array.isArray(asA.body) && asA.body.length > 0 &&
+          JSON.stringify(asA.body) === JSON.stringify(asB.body) && asB.body.length > 1) {
+        add({
+          table, mode: 'authuid_misuse', verdict: 'confirmed', severity: 5,
+          title: `Any logged-in user reads all rows of "${table}" (auth.uid() misuse)`,
+          evidence: `two different accounts received identical ${asA.body.length}-row result: ` +
+            JSON.stringify(asA.body[0]).slice(0, 70),
+          fix: `The policy checks "is logged in" not "owns the row". Change ` +
+               `USING (auth.uid() IS NOT NULL) to USING (owner = auth.uid()).`,
         });
       }
     }
