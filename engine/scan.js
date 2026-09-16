@@ -7,6 +7,8 @@ const ledger = require('./ledger');
 const watch = require('./watch');
 const { plan: fixPlan } = require('./fix');
 const { verifyAll } = require('./verify');
+const { falsify } = require('./adversary');
+const { triage } = require('./triage');
 const { exportAll } = require('./mcp-export');
 const { Sandbox } = require('./sandbox');
 const fs = require('fs');
@@ -41,6 +43,14 @@ const login = async (email, password) => {
       const r = await box.fetch(BASE + p, { headers: token ? { authorization: 'Bearer ' + token } : {} });
       let body = null; try { body = await r.json(); } catch {}
       return { status: r.status, body };
+    },
+    send: async (p, token, payload) => {
+      const [method, path] = p.includes(' ') ? p.split(' ') : ['PATCH', p];
+      const r = await box.fetch(BASE + path, { method,
+        headers: { 'content-type': 'application/json', ...(token ? { authorization: 'Bearer ' + token } : {}) },
+        body: JSON.stringify(payload) });
+      let body = null; try { body = await r.json(); } catch {}
+      return { status: r.status, body };
     } };
 
   // 2. PARALLEL HUNT - fresh findings array per route, workers retired after each
@@ -51,13 +61,23 @@ const login = async (email, password) => {
     return out;
   }, { concurrency: 6, onProgress: d => { done = d; } });
   const findings = chunks.flat();
-  const confirmed = findings.filter(f => f.verdict === 'confirmed');
-  const needs = findings.filter(f => f.verdict === 'needs_validation');
+  const rawConfirmed = findings.filter(f => f.verdict === 'confirmed');
+
+  // ADVERSARIAL DISPROVE - independent module re-derives each attack and tries
+  // to falsify it. Only survivors stay confirmed.
+  const tested = await falsify(ctx, rawConfirmed);
+  const confirmed = tested.filter(f => f.verdict === 'confirmed');
+  const falsified = tested.filter(f => f.verdict === 'rejected');
+  const needs = [...findings.filter(f => f.verdict === 'needs_validation'),
+                 ...tested.filter(f => f.verdict === 'needs_validation')];
   const rejected = findings.filter(f => f.verdict === 'rejected');
 
   // 3. LEDGER - accumulate across runs
   const delta = ledger.record(`${STATE}/ledger.json`, {
     coveredUnits: routes.map(r => `${r.method} ${r.path}`), confirmed });
+
+  // AUTOTRIAGE - one row per root cause
+  const tri = triage(confirmed);
 
   // 4. FIX PLAN  5. INDEPENDENT VERIFY (separate module, never saw the hunt)
   const reds = fixPlan(confirmed);
@@ -74,7 +94,11 @@ const login = async (email, password) => {
   if (surface.added.length) console.log(`│ new endpoints      ${surface.added.join(', ')}`);
   console.log(`│ scheduler says     ${sched.scope}  (${sched.why})`);
   console.log(`├─ HUNT (parallel, ${6} workers) ──────────────────────`);
-  console.log(`│ confirmed ${confirmed.length}   needs-check ${needs.length}   passed ${rejected.length}`);
+  console.log(`│ candidates ${rawConfirmed.length}`);
+  console.log(`├─ ADVERSARIAL DISPROVE (independent) ────────────────`);
+  console.log(`│ survived ${confirmed.length}   falsified ${falsified.length}`);
+  console.log(`├─ AUTOTRIAGE ────────────────────────────────────────`);
+  console.log(`│ ${confirmed.length} findings -> ${tri.rows} root-cause clusters (dedupe ${Math.round(tri.dedupeRatio*100)}%)`);
   console.log(`├─ LEDGER (run #${delta.run}) ─────────────────────────────`);
   console.log(`│ new ${delta.isNew.length}   persisting ${delta.persisting.length}   fixed ${delta.fixed.length}   cumulative open ${delta.cumulative}`);
   console.log(`├─ FIX PLAN ──────────────────────────────────────────`);

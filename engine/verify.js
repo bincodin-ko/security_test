@@ -44,6 +44,15 @@ const VERIFIERS = {
     return leak ? { fixed: false, why: 'server-only field still present in response' }
                 : { fixed: true, why: 'no server-only field in response' };
   },
+  I4: async (ctx, f) => {
+    if (!ctx.allowDestructive || !ctx.send) return { fixed: null, why: 'destructive verify disabled' };
+    const p = f.route.split(' ')[1];
+    const res = await ctx.send(`${f.route}`, ctx.B.token, { role: 'admin' });
+    return (res.body && res.body.role === 'admin')
+      ? { fixed: false, why: 'client can still set a privileged field' }
+      : { fixed: true, why: 'server now ignores the privileged field' };
+  },
+  I5: async () => ({ fixed: null, why: 'state-transition legality is domain-specific; needs human confirmation' }),
 };
 
 async function verifyAll(ctx, findings) {
