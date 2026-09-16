@@ -85,3 +85,89 @@ I2 의 최초 구현은 "관리자와 응답이 같으면 권한상승"이었고
 
 수정 후 `/api/stats` 는 `rejected`(진짜 공개 엔드포인트)로,
 `/api/cards/:id` 는 `rejected`(소유권 검사 정상 동작)로 바르게 분류된다.
+
+---
+
+# 2차: 경쟁사 메커니즘 마저 구현
+
+`pool.js` `ledger.js` `sandbox.js` `fix.js` `verify.js` `watch.js`
+`mcp-export.js` `scan.js` 를 추가해 파이프라인을 완성했다.
+
+| 출처 | 메커니즘 | 파일 | 상태 |
+|---|---|---|---|
+| Cloudflare | coverage-ledger, 반복 실행 누적 | `ledger.js` | 동작 |
+| XBOW | 단명 병렬 워커 | `pool.js` | 동작 |
+| XBOW | 격리 실행 + 이그레스 통제 | `sandbox.js` | 프로세스 드라이버 동작 / 도커 드라이버 미검증 |
+| VulnHunter | fix — RED 회귀 테스트 생성 | `fix.js` | 동작 |
+| VulnHunter | verify — 독립 재검증 | `verify.js` | 동작 |
+| Aikido | 지속 감시, 표면 변화 감지 | `watch.js` | 동작 |
+| Vibe App Scanner | AI 툴 인계 (MCP/붙여넣기) | `mcp-export.js` | 동작 |
+
+## 실행
+
+```bash
+cd ../experiment/vulnapp && node server.js &
+cd ../../engine && node scan.js
+```
+
+## 검증: 고치면 알아보는가
+
+1차 스캔 후 인계 프롬프트가 지시한 대로 두 곳을 고쳤다.
+`/api/notes/:id` 에 소유권 검사를, `/api/internal/metrics` 에 인증을
+추가하고 시크릿 필드를 제거했다. **엔진은 건드리지 않았다.**
+
+```
+run#1  라우트 13  확정 18  신규 18  수정 0
+run#2  라우트 13  확정 13  신규 0   수정 5
+```
+
+원장이 수정 5건을 정확히 집어냈다. 두 곳을 고쳤는데 5건인 이유는
+하나의 코드 결함이 여러 불변식을 동시에 위반하고 있었기 때문이다.
+
+| 고쳐짐으로 판정된 건 |
+|---|
+| `I1 GET /api/notes/:id` 교차계정 읽기 |
+| `I2 GET /api/notes/:id` 권한 상승 |
+| `I2 GET /api/internal/metrics` 권한 상승 |
+| `I3 GET /api/internal/metrics` 무인증 접근 |
+| `I6 GET /api/internal/metrics` 시크릿 노출 |
+
+독립 확인:
+
+```
+밥이 앨리스 노트 요청       -> 403
+익명으로 internal/metrics  -> 401
+```
+
+## 이그레스 통제가 왜 핵심인가
+
+사용자가 지정한 호스트로 임의 요청을 쏘는 스캐너는, 통제가 없으면
+**제3자를 공격하는 중계기**가 된다. 모든 요청이 `guard()` 를 지난다.
+
+```
+허용 대상(127.0.0.1)        -> 200
+외부 호스트(example.com)    -> egress blocked
+클라우드 메타데이터          -> egress blocked: resolves to private address
+요청 상한 초과              -> request cap reached
+시크릿 마스킹               -> {"db_password":"prod…[redacted]"}
+```
+
+클라우드 메타데이터 주소(169.254.169.254) 차단은 SSRF 고전 표적이라
+반드시 필요하다. 마스킹은 증거가 리포트·로그·LLM 프롬프트로 새는 것을 막는다.
+
+## 표면 변화 감지로 비용 줄이기
+
+2차 스캔에서 라우트 구성이 그대로였으므로 스케줄러가 `none` 을 반환했다.
+새 코드가 새 취약점의 유일한 출처이므로, 배포가 라우트를 바꾸지 않았다면
+전체 스윕을 돌릴 이유가 없다. 이 판단에 LLM 호출이 없다.
+
+## 구현하지 못한 것
+
+- **도커 격리 실행** — 드라이버는 작성했으나 이 환경에서 데몬에 접근할 수 없어
+  검증하지 못했다. 컨테이너 없이는 신뢰할 수 없는 코드 실행을 거부하도록
+  해 두었다.
+- **자율적 신종 취약점 발견** (Mythos 급) — 프론티어 모델이 필요하다.
+  불변식은 알려지지 않은 *엔드포인트* 를 잡지만, 알려지지 않은 *취약점 종류* 는
+  못 잡는다.
+- **I5 상태 단방향** — 어떤 전이가 합법인지 앱 주인만 알 수 있어
+  질문만 제기한다.

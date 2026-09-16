@@ -58,6 +58,7 @@ app.post('/api/login', (req, res) => {
 app.get('/api/notes/:id', auth, (req, res) => {
   const note = db.prepare('SELECT * FROM notes WHERE id = ?').get(req.params.id);
   if (!note) return res.status(404).json({ error: 'not found' });
+  if (note.owner_id !== req.user.id) return res.status(403).json({ error: 'forbidden' }); // FIXED
   res.json(note);
 });
 
@@ -137,8 +138,8 @@ app.get('/api/reports/:id/export', auth, (req, res) => {
   res.json(db.prepare('SELECT * FROM reports WHERE id = ?').get(req.params.id));
 });
 
-app.get('/api/internal/metrics', (req, res) => {
-  res.json({ signups_today: 42, db_password: 'prod_db_pw_7Kx9mQ2vL', active_sessions: tokens.size });
+app.get('/api/internal/metrics', auth, (req, res) => {   // FIXED: auth added
+  res.json({ signups_today: 42, active_sessions: tokens.size });  // FIXED: secret removed
 });
 
 module.exports = app;
