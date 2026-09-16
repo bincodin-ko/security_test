@@ -1,0 +1,15 @@
+{
+  "supabase": {
+    "url": "https://YOUR-PROJECT.supabase.co",
+    "anonKey": "eyJ...YOUR-PUBLIC-ANON-KEY",
+    "userA": "OPTIONAL-logged-in-user-A-jwt",
+    "userB": "OPTIONAL-logged-in-user-B-jwt"
+  },
+  "e2b": { "apiKey": "e2b_YOUR-API-KEY" },
+  "app": {
+    "base": "https://your-app.com",
+    "loginPath": "/api/login",
+    "emailA": "a@test.com", "pwA": "pwA",
+    "emailB": "b@test.com", "pwB": "pwB"
+  }
+}

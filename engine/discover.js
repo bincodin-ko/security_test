@@ -5,6 +5,11 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { discoverNext } = require('./discover-next');
+
+function isNextApp(dir) {
+  return !!dir && (fs.existsSync(path.join(dir, 'app')) || fs.existsSync(path.join(dir, 'pages')));
+}
 
 // --- Source 1: parse server source for framework route registrations -------
 function fromSource(dir) {
@@ -73,8 +78,11 @@ async function fromOpenAPI(base) {
 }
 
 async function discover({ base, sourceDir }) {
+  const sourceRoutes = sourceDir && fs.existsSync(sourceDir)
+    ? (isNextApp(sourceDir) ? discoverNext(sourceDir) : fromSource(sourceDir))
+    : [];
   const all = [
-    ...(sourceDir && fs.existsSync(sourceDir) ? fromSource(sourceDir) : []),
+    ...sourceRoutes,
     ...(await fromOpenAPI(base)),
     ...(await fromProbe(base)),
   ];
