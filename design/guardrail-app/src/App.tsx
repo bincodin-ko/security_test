@@ -6,11 +6,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   ShieldCheck, Crosshair, Box, Wrench, BookOpen, RefreshCw,
   Search, Globe, Radar, Copy, Check, Play, Sparkles, FileDiff, Plus, Lock, ArrowRight,
+  EyeOff, PenLine, KeyRound,
 } from "lucide-react";
 
 type Cluster = {
   inv: string[]; method: string; route: string; title: string; src: string;
   cause: string; ev0: string; ev1: string; fix: string; diff: [string, string][];
+  supaOnly?: boolean;
 };
 
 const CLUSTERS: Cluster[] = [
@@ -49,7 +51,7 @@ const CLUSTERS: Cluster[] = [
     ev1: '[{"id":1,"email":"al[[R]]@…","password_hash":"7abd[[R]]"}, …]',
     fix: '"/api/admin/users" 를 역할 검사 뒤로 옮기고(관리자만), 응답에서 password_hash 를 제거하세요. SELECT * 대신 필요한 컬럼만 명시하거나 공용 시리얼라이저로 민감 컬럼을 걸러내세요.',
     diff: [["add", '+ if (req.user.role !== "admin") return res.status(403).end()'], ["del", '- res.json(db.prepare("SELECT * FROM users").all())'], ["add", '+ res.json(db.prepare("SELECT id,email,role FROM users").all())']] },
-  { inv: ["auth.uid"], method: "TABLE", route: "documents", src: "Supabase RLS · 2계정",
+  { inv: ["auth.uid"], method: "TABLE", route: "documents", src: "Supabase RLS · 2계정", supaOnly: true,
     title: "로그인한 사람은 누구나 모든 문서를 읽습니다",
     cause: 'RLS 정책이 **"소유"가 아니라 "로그인 여부"만** 검사합니다. 두 계정이 서로의 문서를 다 봅니다.',
     ev0: "앨리스·밥 각각 조회 → 완전히 동일한 2행 수신:",
@@ -173,6 +175,12 @@ export default function App() {
 
   const stageIdx = Math.min(4, Math.floor(prog * 5));
   const STAGES = ["라우트 발견", "불변식 I1–I6 검사", "적대적 반증", "격리 증명", "결과 정리"];
+
+  // honest coverage: Supabase-only findings appear as confirmed ONLY when a key
+  // was given — otherwise that area is reported as "not checked", never hidden.
+  const shown = withSupa ? CLUSTERS : CLUSTERS.filter((c) => !c.supaOnly);
+  const confirmedN = shown.length;
+  const openSupaInput = () => { setView("input"); setSupaOpen(true); requestAnimationFrame(() => scrollTo({ top: 0 })); };
 
   const btnPrimary = "rounded-full ap-press font-normal";
   const btnGhost = "rounded-full ap-press font-normal bg-transparent";
@@ -345,7 +353,7 @@ export default function App() {
           <Band tone="parch" className="pt-[52px] pb-[44px]">
             <div className="text-[13px] font-semibold" style={{ color: "var(--ap-blue)" }}>스캔 완료 · 방금 · {host}{withSupa ? " + Supabase" : ""}</div>
             <h1 className="font-display font-semibold tighter leading-[1.08] text-[clamp(30px,5.5vw,48px)] mt-3" style={{ color: "var(--ap-ink)" }}>
-              지금 <span style={{ color: "var(--ap-crit)" }}>6곳</span>에서<br className="sm:hidden" /> 남의 데이터가 새고 있습니다
+              지금 <span style={{ color: "var(--ap-crit)" }}>{confirmedN}곳</span>에서<br className="sm:hidden" /> 남의 데이터가 새고 있습니다
             </h1>
             <p className="mt-4 text-[clamp(17px,2.2vw,20px)] leading-[1.45] max-w-[70ch]" style={{ color: "var(--ap-muted)" }}>
               라우트를 스스로 찾아 불변식 6개로 검사하고, 독립 에이전트가 반박한 뒤, 격리 환경에서 실제로 뚫어 증명한 것만 보여드립니다.
@@ -353,7 +361,7 @@ export default function App() {
 
             <div className="grid md:grid-cols-[1.6fr_1fr] gap-4 mt-9">
               <div className="grid grid-cols-3 gap-3">
-                {[["6", "확정", "실제로 뚫림", "crit"], ["3", "확인 필요", "당신 판단 필요", "warn"], ["48", "통과", "검사했고 안전", "pass"]].map(([n, l, s, c]) => (
+                {[[String(confirmedN), "확정", "실제로 뚫림", "crit"], ["3", "확인 필요", "당신 판단 필요", "warn"], ["48", "통과", "검사했고 안전", "pass"]].map(([n, l, s, c]) => (
                   <div key={l} className="rounded-[18px] bg-white ap-hair p-5">
                     <div className="font-num font-semibold text-[clamp(36px,6vw,52px)] leading-none tighter" style={{ color: `var(--ap-${c})` }}>{n}</div>
                     <div className="text-[15px] font-semibold mt-3" style={{ color: "var(--ap-ink)" }}>{l}</div>
@@ -362,9 +370,9 @@ export default function App() {
                 ))}
               </div>
               <div className="rounded-[18px] bg-white ap-hair p-5 flex items-center gap-5">
-                <Donut />
+                <Donut conf={confirmedN} />
                 <div className="text-[13.5px] leading-[1.9]" style={{ color: "var(--ap-muted)" }}>
-                  <Legend c="var(--ap-crit)" t="확정 6" />
+                  <Legend c="var(--ap-crit)" t={`확정 ${confirmedN}`} />
                   <Legend c="var(--ap-warn)" t="확인 필요 3" />
                   <Legend c="var(--ap-pass)" t="통과 48" />
                   <div className="font-mono text-[11.5px] mt-2" style={{ color: "var(--ap-muted2)" }}>불변식 I1–I6 · 노이즈 −46%</div>
@@ -377,7 +385,7 @@ export default function App() {
           <Band tone="white" className="pt-[44px] pb-[52px]">
             <SectionHead title="확정된 취약점" meta="심각도순 · 독립 반증 통과분만 · 근본원인별 묶음" />
             <div className="flex flex-col gap-3">
-              {CLUSTERS.map((c, i) => (
+              {shown.map((c) => { const i = CLUSTERS.indexOf(c); return (
                 <div key={i} className="rounded-[18px] bg-white ap-hair overflow-hidden">
                   <div className="p-[18px_20px]">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -408,7 +416,7 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-              ))}
+              ); })}
             </div>
           </Band>
 
@@ -432,18 +440,33 @@ export default function App() {
             </div>
           </Band>
 
-          {/* watch — parchment */}
-          <Band tone="parch" className="pt-[44px] pb-[64px]">
-            <div className="rounded-[18px] bg-white ap-hair p-6">
-              <h3 className="font-display font-semibold text-[20px] tight flex items-center gap-2.5" style={{ color: "var(--ap-ink)" }}><Radar className="w-[19px] h-[19px]" style={{ color: "var(--ap-blue)" }} />배포할 때마다 자동으로 다시 지켜봅니다</h3>
-              <div className="grid gap-2.5 mt-4" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
-                {[["배포 감지", "새 엔드포인트만 즉시 재검사"], ["매일 새벽", "전체 읽기전용 스윕"], ["주 1회", "쓰기·삭제 포함 심층"], ["이번 주", "3회 배포 · 새 API 5개"]].map(([t, v]) => (
-                  <div key={t} className="rounded-[14px] p-4" style={{ background: "var(--ap-parch)" }}>
-                    <div className="font-mono text-[12px]" style={{ color: "var(--ap-muted2)" }}>{t}</div>
-                    <div className="text-[14px] mt-1" style={{ color: "var(--ap-ink)" }}>{v}</div>
-                  </div>
-                ))}
-              </div>
+          {/* coverage gaps — parchment. Never hide what we couldn't reach. */}
+          <Band tone="parch" className="pt-[44px] pb-[44px]">
+            <SectionHead title="검사하지 못한 영역" meta="여기는 아직 못 봤습니다 — 숨기지 않고 그대로 알려드립니다" />
+            <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))" }}>
+              {!withSupa && (
+                <CoverGap icon={<Box className="w-[18px] h-[18px]" />} title="Supabase RLS · 테이블 권한"
+                  reason="anon key를 넣지 않아 RLS 정책, 테이블 접근 권한, service_role 노출을 검사하지 못했습니다."
+                  action="＋ 키 넣고 검사하기" onAction={openSupaInput} />
+              )}
+              <CoverGap icon={<PenLine className="w-[18px] h-[18px]" />} title="쓰기·삭제 공격 (POST·PUT·DELETE)"
+                reason="데이터를 바꾸지 않으려고 읽기 전용으로 돌렸습니다. 켜면 상태 변경·삭제 권한까지 실제로 시도합니다."
+                action="심층 검사 (쓰기 포함) 다시 실행" onAction={runScan} />
+              <CoverGap icon={<KeyRound className="w-[18px] h-[18px]" />} title="로그인 뒤 화면"
+                reason="세션 없이 접근되는 영역만 봤습니다. 테스트 계정을 주면 로그인 뒤 페이지·역할별 권한까지 검사합니다." />
+            </div>
+          </Band>
+
+          {/* watch — white */}
+          <Band tone="white" className="pt-[44px] pb-[64px]">
+            <h3 className="font-display font-semibold text-[20px] tight flex items-center gap-2.5" style={{ color: "var(--ap-ink)" }}><Radar className="w-[19px] h-[19px]" style={{ color: "var(--ap-blue)" }} />배포할 때마다 자동으로 다시 지켜봅니다</h3>
+            <div className="grid gap-2.5 mt-4" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))" }}>
+              {[["배포 감지", "새 엔드포인트만 즉시 재검사"], ["매일 새벽", "전체 읽기전용 스윕"], ["주 1회", "쓰기·삭제 포함 심층"], ["이번 주", "3회 배포 · 새 API 5개"]].map(([t, v]) => (
+                <div key={t} className="rounded-[14px] p-4 ap-hair" style={{ background: "var(--ap-parch)" }}>
+                  <div className="font-mono text-[12px]" style={{ color: "var(--ap-muted2)" }}>{t}</div>
+                  <div className="text-[14px] mt-1" style={{ color: "var(--ap-ink)" }}>{v}</div>
+                </div>
+              ))}
             </div>
           </Band>
 
@@ -458,6 +481,23 @@ export default function App() {
 
 function Legend({ c, t }: { c: string; t: string }) {
   return <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full inline-block" style={{ background: c }} />{t}</div>;
+}
+function CoverGap({ icon, title, reason, action, onAction }: { icon: React.ReactNode; title: string; reason: string; action?: string; onAction?: () => void }) {
+  return (
+    <div className="rounded-[18px] bg-white ap-hair p-5 flex flex-col">
+      <div className="flex items-center gap-2.5">
+        <span className="grid place-items-center w-9 h-9 rounded-full shrink-0" style={{ background: "var(--ap-parch)", color: "var(--ap-muted)" }}>{icon}</span>
+        <span className="text-[11px] font-mono px-2 py-0.5 rounded-full ml-auto" style={{ background: "#f0f0f2", color: "var(--ap-muted2)" }}>미검사</span>
+      </div>
+      <div className="font-display font-semibold text-[16px] tight mt-3" style={{ color: "var(--ap-ink)" }}>{title}</div>
+      <div className="text-[13.5px] leading-[1.55] mt-1.5 flex-1" style={{ color: "var(--ap-muted)" }}>{reason}</div>
+      {action && (
+        <button onClick={onAction} className="mt-3 inline-flex items-center gap-1 text-[13.5px] font-semibold ap-press self-start" style={{ color: "var(--ap-blue)" }}>
+          {action} <ArrowRight className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
 }
 function SectionHead({ title, meta }: { title: string; meta: string }) {
   return (
@@ -490,8 +530,8 @@ function Footer() {
   );
 }
 
-function Donut() {
-  const total = 57, conf = 6, need = 3, pass = 48;
+function Donut({ conf = 6 }: { conf?: number }) {
+  const total = 57, need = 3, pass = 48;
   const r = 48, c = 2 * Math.PI * r;
   const seg = (n: number) => (n / total) * c;
   let off = 0;
