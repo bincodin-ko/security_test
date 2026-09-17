@@ -11,11 +11,19 @@ import {
 
 type Cluster = {
   inv: string[]; method: string; route: string; title: string; src: string;
-  cause: string; ev0: string; ev1: string; fix: string; diff: [string, string][];
-  supaOnly?: boolean;
+  cause: string; ev0: string; ev1: string; fix: string;
+  diff?: [string, string][]; red?: string | null; supaOnly?: boolean;
+};
+type Row = { method: string; route: string; desc: string; why: string };
+type LiveData = {
+  live: true; target: string; withSupabase: boolean;
+  meta: { routes: number; candidates: number; confirmed: number; clusters: number; dedupe: number; verifyOpen: number; verifyFixed: number; sandboxReqs: number; tables: number | null };
+  clusters: Cluster[]; needs: { method: string; route: string; title: string; why: string }[];
+  passed: { method: string; route: string; title: string; why: string }[];
+  coverage: { supabaseRan: boolean; destructiveRan: boolean };
 };
 
-const CLUSTERS: Cluster[] = [
+const DEMO_CLUSTERS: Cluster[] = [
   { inv: ["I1", "I2", "I6"], method: "GET", route: "/api/v2/workspaces/:id", src: "2계정 동적 테스트",
     title: "다른 회사의 워크스페이스와 API 토큰이 통째로 노출됩니다",
     cause: "소유권 검사가 없습니다. **owner_id 비교 한 줄**이면 세 가지가 한꺼번에 해결됩니다.",
@@ -70,7 +78,7 @@ const PIPE = [
   ["07", "감시", "배포마다 재검사", "Aikido"],
 ];
 
-const STREAM: [string, string][] = [
+const DEMO_STREAM: [string, string][] = [
   ["accent", "  GET /api/v2/workspaces/1   Authorization: Bearer <A>"],
   ["", "  route discovered · account A → B"],
   ["crit", "  → 200 OK   ISOLATION BROKEN — cross-account read"],
@@ -87,6 +95,17 @@ const STREAM: [string, string][] = [
   ["", "  sandbox: replay PoC in isolated VM (net off) …"],
   ["pass", "  ✓ confirmed 6   ✓ passed 48   noise −46%"],
   ["", "  GET /api/cards/1   owner check → 403   (ok)"],
+];
+
+const DEMO_NEEDS: Row[] = [
+  { method: "PATCH", route: "/api/me", desc: "클라이언트가 보낸 role 값을 서버가 믿을 수 있습니다", why: "쓰기 테스트 꺼짐 — 켜면 확정" },
+  { method: "POST", route: "/api/orders/:id/status", desc: "결제 상태를 되돌릴 수 있는지 — 합법 여부는 앱 규칙에 달림", why: "상태 전이 규칙은 당신만" },
+  { method: "", route: "table: api_keys", desc: "익명엔 잠겼으나 secret 담은 테이블 — service_role 유출 시 즉시 노출", why: "크라운 주얼 · 키 관리" },
+];
+const DEMO_PASSED: Row[] = [
+  { method: "GET", route: "/api/cards/:id", desc: "소유권 검사가 제대로 있음 — 밥이 앨리스 카드 요청하면 403", why: "격리 유지 ✓" },
+  { method: "", route: "table: private_msgs", desc: "RLS 정상 — 로그인해도 자기 메시지만 보임", why: "소유권 정책 ✓" },
+  { method: "GET", route: "/api/stats", desc: "공개 엔드포인트 — 민감 데이터 없음. 권한상승 오탐으로 잡지 않음", why: "의도된 공개 ✓" },
 ];
 
 /* classic anon keys are JWTs whose payload carries the project ref →
@@ -150,7 +169,12 @@ export default function App() {
   const [supaKey, setSupaKey] = useState("");
   const [prog, setProg] = useState(0);
   const [fixIdx, setFixIdx] = useState<number | null>(null);
+  const [data, setData] = useState<LiveData | null>(null);   // real engine result; null = demo
+  const [liveLog, setLiveLog] = useState<[string, string][]>([]);
+  const [liveStage, setLiveStage] = useState("");
+  const [scanTotal, setScanTotal] = useState(57);
   const raf = useRef<number>();
+  const esRef = useRef<EventSource>();
   const reduce = useMemo(() => matchMedia("(prefers-reduced-motion: reduce)").matches, []);
   const derivedRef = useMemo(() => supaRefFromKey(supaKey), [supaKey]);
   const derivedUrl = derivedRef ? `https://${derivedRef}.supabase.co` : "";
@@ -158,9 +182,11 @@ export default function App() {
   const supaReady = supaOpen && supaKey.trim().length > 0 && (!!derivedUrl || supaUrl.trim().length > 0);
   const withSupa = supaReady;
 
-  const runScan = () => {
-    const h = url.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || "my-vibe-app.vercel.app";
-    setHost(h); setView("scan"); setProg(0);
+  const STAGES = ["라우트 발견", "불변식 I1–I6 검사", "적대적 반증", "격리 증명", "결과 정리"];
+
+  // fake-animate the demo when no backend is reachable (keeps the artifact usable)
+  const demoAnimate = () => {
+    setData(null); setScanTotal(57);
     const dur = reduce ? 400 : 3200;
     const t0 = performance.now();
     const step = (now: number) => {
@@ -171,15 +197,46 @@ export default function App() {
     };
     raf.current = requestAnimationFrame(step);
   };
-  useEffect(() => () => { if (raf.current) cancelAnimationFrame(raf.current); }, []);
 
-  const stageIdx = Math.min(4, Math.floor(prog * 5));
-  const STAGES = ["라우트 발견", "불변식 I1–I6 검사", "적대적 반증", "격리 증명", "결과 정리"];
+  const runScan = () => {
+    const h = url.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || "my-vibe-app.vercel.app";
+    setHost(h); setView("scan"); setProg(0); setLiveLog([]); setLiveStage(""); setData(null);
+    if (raf.current) cancelAnimationFrame(raf.current);
+    try { esRef.current?.close(); } catch {}
+
+    // Live path: talk to the real engine server (same origin). Falls back to the
+    // built-in demo if no backend answers (e.g. opened as a standalone artifact).
+    const isDemo = /my-vibe-app\.vercel\.app/.test(url) || url.trim() === "";
+    const qs = new URLSearchParams({ target: isDemo ? "demo" : url.trim() });
+    if (withSupa) { qs.set("supabaseKey", supaKey.trim()); qs.set("supabaseUrl", (derivedUrl || supaUrl).trim()); }
+    let es: EventSource | null = null;
+    let got = false;
+    const fallback = () => { try { es?.close(); } catch {} if (!got) demoAnimate(); };
+    try { es = new EventSource(`/api/scan?${qs}`); } catch { es = null; }
+    if (!es) return demoAnimate();
+    esRef.current = es;
+    const timer = setTimeout(fallback, 1500); // no backend → demo
+    es.addEventListener("stage", (e: MessageEvent) => { got = true; clearTimeout(timer); setLiveStage(JSON.parse(e.data).stage); });
+    es.addEventListener("progress", (e: MessageEvent) => { const d = JSON.parse(e.data); if (d.total) setScanTotal(d.total); setProg(d.total ? d.done / d.total : 0); });
+    es.addEventListener("log", (e: MessageEvent) => { got = true; clearTimeout(timer); const d = JSON.parse(e.data); setLiveLog((l) => [...l.slice(-120), [d.kind, d.text]]); });
+    es.addEventListener("done", (e: MessageEvent) => { const d = JSON.parse(e.data); setData(d.result); setProg(1); try { es!.close(); } catch {} setTimeout(() => setView("results"), reduce ? 0 : 320); });
+    es.addEventListener("error", () => { clearTimeout(timer); if (!got) fallback(); });
+    es.onerror = () => { if (!got) { clearTimeout(timer); fallback(); } };
+  };
+  useEffect(() => () => { if (raf.current) cancelAnimationFrame(raf.current); try { esRef.current?.close(); } catch {} }, []);
+
+  const stageIdx = liveStage ? Math.max(0, STAGES.indexOf(liveStage)) : Math.min(4, Math.floor(prog * 5));
 
   // honest coverage: Supabase-only findings appear as confirmed ONLY when a key
   // was given — otherwise that area is reported as "not checked", never hidden.
-  const shown = withSupa ? CLUSTERS : CLUSTERS.filter((c) => !c.supaOnly);
+  const shown = data ? data.clusters : (withSupa ? DEMO_CLUSTERS : DEMO_CLUSTERS.filter((c) => !c.supaOnly));
   const confirmedN = shown.length;
+  const needsRows: Row[] = data ? data.needs.map((n) => ({ method: n.method, route: n.route, desc: n.title, why: n.why })) : DEMO_NEEDS;
+  const passedRows: Row[] = data ? data.passed.map((p) => ({ method: p.method, route: p.route, desc: p.title, why: p.why })) : DEMO_PASSED;
+  const N = data
+    ? { total: data.meta.routes, conf: confirmedN, need: data.needs.length, pass: data.passed.length }
+    : { total: 57, conf: confirmedN, need: 3, pass: 48 };
+  const supaCovered = data ? data.coverage.supabaseRan : withSupa;
   const openSupaInput = () => { setView("input"); setSupaOpen(true); requestAnimationFrame(() => scrollTo({ top: 0 })); };
 
   const btnPrimary = "rounded-full ap-press font-normal";
@@ -300,15 +357,23 @@ export default function App() {
                   <i className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: "#ff5f57" }} />
                   <i className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: "#febc2e" }} />
                   <i className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: "#28c840" }} />
-                  <span className="ml-2.5 font-mono text-[12px] truncate" style={{ color: "#8e8e93" }}>probing /api/v2/workspaces/:id · account A → B</span>
+                  <span className="ml-2.5 font-mono text-[12px] truncate" style={{ color: "#8e8e93" }}>{liveLog.length ? `probing ${host} · account A → B` : "probing /api/v2/workspaces/:id · account A → B"}</span>
                 </div>
-                <div className="absolute left-0 right-0 top-[44px] bottom-0 overflow-hidden px-5">
-                  <div className="gr-flow font-mono text-[12px] leading-[1.55]">
-                    {STREAM.concat(STREAM).map(([c, t], i) => (
+                {liveLog.length ? (
+                  <div className="absolute left-0 right-0 top-[44px] bottom-0 overflow-hidden px-5 flex flex-col justify-end pb-3 font-mono text-[12px] leading-[1.55]">
+                    {liveLog.slice(-16).map(([c, t], i) => (
                       <div key={i} className={c ? "" : "opacity-45"} style={{ color: c === "crit" ? "var(--ap-crit-ondark)" : c === "warn" ? "#ffcf70" : c === "pass" ? "var(--ap-pass-ondark)" : c === "accent" ? "var(--ap-blue-dark)" : "#c7c7cc" }}>{t}</div>
                     ))}
                   </div>
-                </div>
+                ) : (
+                  <div className="absolute left-0 right-0 top-[44px] bottom-0 overflow-hidden px-5">
+                    <div className="gr-flow font-mono text-[12px] leading-[1.55]">
+                      {DEMO_STREAM.concat(DEMO_STREAM).map(([c, t], i) => (
+                        <div key={i} className={c ? "" : "opacity-45"} style={{ color: c === "crit" ? "var(--ap-crit-ondark)" : c === "warn" ? "#ffcf70" : c === "pass" ? "var(--ap-pass-ondark)" : c === "accent" ? "var(--ap-blue-dark)" : "#c7c7cc" }}>{t}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="gr-sweep absolute left-0 right-0 h-[2px] z-[2]" style={{ top: "1%", background: "linear-gradient(90deg,transparent,var(--ap-blue-dark),transparent)", boxShadow: "0 0 20px 3px rgba(41,151,255,.5)" }} />
                 <div className="absolute left-0 right-0 bottom-0 h-[64px] z-[2]" style={{ background: "linear-gradient(180deg,transparent,var(--ap-tile3))" }} />
               </div>
@@ -317,8 +382,8 @@ export default function App() {
               <div className="mt-7">
                 <div className="flex items-baseline justify-between">
                   <div className="flex items-baseline gap-2">
-                    <span className="font-num font-semibold text-[28px] tighter" style={{ color: "var(--ap-ink)" }}>{Math.round(prog * 57)}</span>
-                    <span className="text-[14px]" style={{ color: "var(--ap-muted)" }}>/ 57 라우트</span>
+                    <span className="font-num font-semibold text-[28px] tighter" style={{ color: "var(--ap-ink)" }}>{Math.round(prog * scanTotal)}</span>
+                    <span className="text-[14px]" style={{ color: "var(--ap-muted)" }}>/ {scanTotal} 라우트</span>
                   </div>
                   <span className="font-mono text-[12px]" style={{ color: "var(--ap-muted2)" }}>{STAGES[stageIdx]}</span>
                 </div>
@@ -351,7 +416,12 @@ export default function App() {
 
           {/* summary hero — parchment */}
           <Band tone="parch" className="pt-[52px] pb-[44px]">
-            <div className="text-[13px] font-semibold" style={{ color: "var(--ap-blue)" }}>스캔 완료 · 방금 · {host}{withSupa ? " + Supabase" : ""}</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="text-[13px] font-semibold" style={{ color: "var(--ap-blue)" }}>스캔 완료 · 방금 · {host}{supaCovered ? " + Supabase" : ""}</div>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full" style={data ? { background: "#e7f0ff", color: "var(--ap-blue)" } : { background: "#f0f0f2", color: "var(--ap-muted2)" }}>
+                {data ? `실제 엔진 · ${data.meta.sandboxReqs}회 요청` : "예시 데이터"}
+              </span>
+            </div>
             <h1 className="font-display font-semibold tighter leading-[1.08] text-[clamp(30px,5.5vw,48px)] mt-3" style={{ color: "var(--ap-ink)" }}>
               지금 <span style={{ color: "var(--ap-crit)" }}>{confirmedN}곳</span>에서<br className="sm:hidden" /> 남의 데이터가 새고 있습니다
             </h1>
@@ -361,7 +431,7 @@ export default function App() {
 
             <div className="grid md:grid-cols-[1.6fr_1fr] gap-4 mt-9">
               <div className="grid grid-cols-3 gap-3">
-                {[[String(confirmedN), "확정", "실제로 뚫림", "crit"], ["3", "확인 필요", "당신 판단 필요", "warn"], ["48", "통과", "검사했고 안전", "pass"]].map(([n, l, s, c]) => (
+                {[[String(N.conf), "확정", "실제로 뚫림", "crit"], [String(N.need), "확인 필요", "당신 판단 필요", "warn"], [String(N.pass), "통과", "검사했고 안전", "pass"]].map(([n, l, s, c]) => (
                   <div key={l} className="rounded-[18px] bg-white ap-hair p-5">
                     <div className="font-num font-semibold text-[clamp(36px,6vw,52px)] leading-none tighter" style={{ color: `var(--ap-${c})` }}>{n}</div>
                     <div className="text-[15px] font-semibold mt-3" style={{ color: "var(--ap-ink)" }}>{l}</div>
@@ -370,12 +440,12 @@ export default function App() {
                 ))}
               </div>
               <div className="rounded-[18px] bg-white ap-hair p-5 flex items-center gap-5">
-                <Donut conf={confirmedN} />
+                <Donut total={N.total} conf={N.conf} need={N.need} pass={N.pass} />
                 <div className="text-[13.5px] leading-[1.9]" style={{ color: "var(--ap-muted)" }}>
-                  <Legend c="var(--ap-crit)" t={`확정 ${confirmedN}`} />
-                  <Legend c="var(--ap-warn)" t="확인 필요 3" />
-                  <Legend c="var(--ap-pass)" t="통과 48" />
-                  <div className="font-mono text-[11.5px] mt-2" style={{ color: "var(--ap-muted2)" }}>불변식 I1–I6 · 노이즈 −46%</div>
+                  <Legend c="var(--ap-crit)" t={`확정 ${N.conf}`} />
+                  <Legend c="var(--ap-warn)" t={`확인 필요 ${N.need}`} />
+                  <Legend c="var(--ap-pass)" t={`통과 ${N.pass}`} />
+                  <div className="font-mono text-[11.5px] mt-2" style={{ color: "var(--ap-muted2)" }}>불변식 I1–I6{data ? ` · 노이즈 −${data.meta.dedupe}%` : " · 노이즈 −46%"}</div>
                 </div>
               </div>
             </div>
@@ -385,7 +455,12 @@ export default function App() {
           <Band tone="white" className="pt-[44px] pb-[52px]">
             <SectionHead title="확정된 취약점" meta="심각도순 · 독립 반증 통과분만 · 근본원인별 묶음" />
             <div className="flex flex-col gap-3">
-              {shown.map((c) => { const i = CLUSTERS.indexOf(c); return (
+              {shown.length === 0 && (
+                <div className="rounded-[18px] bg-white ap-hair p-6 text-[15px] flex items-center gap-2.5" style={{ color: "var(--ap-ink)" }}>
+                  <ShieldCheck className="w-5 h-5" style={{ color: "var(--ap-pass)" }} />검사한 경계에서 확정된 취약점이 없습니다. 아래 <b className="font-semibold">검사하지 못한 영역</b>도 확인하세요.
+                </div>
+              )}
+              {shown.map((c, i) => { return (
                 <div key={i} className="rounded-[18px] bg-white ap-hair overflow-hidden">
                   <div className="p-[18px_20px]">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -424,9 +499,11 @@ export default function App() {
           <Band tone="parch" className="pt-[44px] pb-[44px]">
             <SectionHead title="확인이 필요합니다" meta="뚫릴 수 있으나 의도 여부는 당신만 압니다" />
             <div className="rounded-[18px] bg-white ap-hair overflow-hidden">
-              <CompactRow dot="var(--ap-warn)" route={<><span style={{ color: "var(--ap-blue)" }} className="font-semibold">PATCH</span> /api/me</>} desc="클라이언트가 보낸 role 값을 서버가 믿을 수 있습니다" why="쓰기 테스트 꺼짐 — 켜면 확정" />
-              <CompactRow dot="var(--ap-warn)" route={<><span style={{ color: "var(--ap-blue)" }} className="font-semibold">POST</span> /api/orders/:id/status</>} desc="결제 상태를 되돌릴 수 있는지 — 합법 여부는 앱 규칙에 달림" why="상태 전이 규칙은 당신만" />
-              <CompactRow dot="var(--ap-warn)" route={<span>table: api_keys</span>} desc="익명엔 잠겼으나 secret 담은 테이블 — service_role 유출 시 즉시 노출" why="크라운 주얼 · 키 관리" last />
+              {needsRows.length ? needsRows.map((r, i) => (
+                <CompactRow key={i} dot="var(--ap-warn)" last={i === needsRows.length - 1}
+                  route={r.method ? <><span style={{ color: "var(--ap-blue)" }} className="font-semibold">{r.method}</span> {r.route}</> : <span>{r.route}</span>}
+                  desc={r.desc} why={r.why} />
+              )) : <div className="px-5 py-4 text-[13.5px]" style={{ color: "var(--ap-muted2)" }}>확인이 필요한 항목이 없습니다.</div>}
             </div>
           </Band>
 
@@ -434,9 +511,11 @@ export default function App() {
           <Band tone="white" className="pt-[44px] pb-[44px]">
             <SectionHead title="통과한 검사" meta="무엇을 검사했는지 알아야 하니까" />
             <div className="rounded-[18px] bg-white ap-hair overflow-hidden">
-              <CompactRow dot="var(--ap-pass)" route={<><span style={{ color: "var(--ap-blue)" }} className="font-semibold">GET</span> /api/cards/:id</>} desc="소유권 검사가 제대로 있음 — 밥이 앨리스 카드 요청하면 403" why={<span style={{ color: "var(--ap-pass)" }}>격리 유지 ✓</span>} />
-              <CompactRow dot="var(--ap-pass)" route={<span>table: private_msgs</span>} desc="RLS 정상 — 로그인해도 자기 메시지만 보임" why={<span style={{ color: "var(--ap-pass)" }}>소유권 정책 ✓</span>} />
-              <CompactRow dot="var(--ap-pass)" route={<><span style={{ color: "var(--ap-blue)" }} className="font-semibold">GET</span> /api/stats</>} desc="공개 엔드포인트 — 민감 데이터 없음. 권한상승 오탐으로 잡지 않음" why={<span style={{ color: "var(--ap-pass)" }}>의도된 공개 ✓</span>} last />
+              {passedRows.length ? passedRows.map((r, i) => (
+                <CompactRow key={i} dot="var(--ap-pass)" last={i === passedRows.length - 1}
+                  route={r.method ? <><span style={{ color: "var(--ap-blue)" }} className="font-semibold">{r.method}</span> {r.route}</> : <span>{r.route}</span>}
+                  desc={r.desc} why={<span style={{ color: "var(--ap-pass)" }}>{r.why}</span>} />
+              )) : <div className="px-5 py-4 text-[13.5px]" style={{ color: "var(--ap-muted2)" }}>통과 기록이 없습니다.</div>}
             </div>
           </Band>
 
@@ -446,7 +525,7 @@ export default function App() {
 
             <div className="text-[13px] font-semibold mb-3" style={{ color: "var(--ap-ink)" }}>입력을 주면 지금 바로 넓힙니다</div>
             <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))" }}>
-              {!withSupa && (
+              {!supaCovered && (
                 <CoverGap icon={<Box className="w-[18px] h-[18px]" />} title="Supabase RLS · 테이블 권한"
                   reason="anon key를 넣지 않아 RLS 정책, 테이블 접근 권한, service_role 노출을 검사하지 못했습니다."
                   action="＋ 키 넣고 검사하기" onAction={openSupaInput} />
@@ -496,7 +575,7 @@ export default function App() {
         </>
       )}
 
-      <FixDialog idx={fixIdx} onClose={() => setFixIdx(null)} />
+      <FixDialog clusters={shown} idx={fixIdx} onClose={() => setFixIdx(null)} />
     </div>
   );
 }
@@ -552,12 +631,13 @@ function Footer() {
   );
 }
 
-function Donut({ conf = 6 }: { conf?: number }) {
-  const total = 57, need = 3, pass = 48;
+function Donut({ total = 57, conf = 6, need = 3, pass = 48 }: { total?: number; conf?: number; need?: number; pass?: number }) {
+  const sum = conf + need + pass || 1;             // ring shows the finding breakdown
   const r = 48, c = 2 * Math.PI * r;
-  const seg = (n: number) => (n / total) * c;
+  const seg = (n: number) => (n / sum) * c;
   let off = 0;
   const arc = (n: number, color: string) => {
+    if (n <= 0) return null;
     const el = <circle key={color} cx="60" cy="60" r={r} fill="none" stroke={color} strokeWidth="12" strokeLinecap="butt"
       strokeDasharray={`${seg(n)} ${c - seg(n)}`} strokeDashoffset={-off} transform="rotate(-90 60 60)" />;
     off += seg(n); return el;
@@ -569,20 +649,20 @@ function Donut({ conf = 6 }: { conf?: number }) {
         {arc(pass, "var(--ap-pass)")}{arc(conf, "var(--ap-crit)")}{arc(need, "var(--ap-warn)")}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <b className="font-num font-semibold text-[26px] leading-none tighter" style={{ color: "var(--ap-ink)" }}>57</b>
-        <span className="text-[11px]" style={{ color: "var(--ap-muted2)" }}>엔드포인트</span>
+        <b className="font-num font-semibold text-[26px] leading-none tighter" style={{ color: "var(--ap-ink)" }}>{total}</b>
+        <span className="text-[11px]" style={{ color: "var(--ap-muted2)" }}>라우트</span>
       </div>
     </div>
   );
 }
 
-function FixDialog({ idx, onClose }: { idx: number | null; onClose: () => void }) {
+function FixDialog({ clusters, idx, onClose }: { clusters: Cluster[]; idx: number | null; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const [rv, setRv] = useState<"idle" | "run" | "ok">("idle");
   const reduce = useMemo(() => matchMedia("(prefers-reduced-motion: reduce)").matches, []);
   useEffect(() => { if (idx !== null) { setCopied(false); setRv("idle"); } }, [idx]);
-  if (idx === null) return null;
-  const c = CLUSTERS[idx];
+  if (idx === null || !clusters[idx]) return null;
+  const c = clusters[idx];
   const copy = () => { navigator.clipboard?.writeText(c.fix).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1500); };
   const reverify = () => { setRv("run"); setTimeout(() => setRv("ok"), reduce ? 0 : 850); };
   const codeBox = "m-0 rounded-[12px] p-3.5 font-mono text-[12.5px] leading-[1.65] overflow-x-auto whitespace-pre-wrap break-words";
@@ -600,7 +680,7 @@ function FixDialog({ idx, onClose }: { idx: number | null; onClose: () => void }
           <div className="px-5 pt-4">
             <TabsList className="rounded-full h-auto p-1" style={{ background: "var(--ap-parch)" }}>
               <TabsTrigger value="p" className="rounded-full gap-1.5 text-[13px] data-[state=active]:bg-white"><Sparkles className="w-3.5 h-3.5" />AI 프롬프트</TabsTrigger>
-              <TabsTrigger value="d" className="rounded-full gap-1.5 text-[13px] data-[state=active]:bg-white"><FileDiff className="w-3.5 h-3.5" />수정 코드</TabsTrigger>
+              <TabsTrigger value="d" className="rounded-full gap-1.5 text-[13px] data-[state=active]:bg-white"><FileDiff className="w-3.5 h-3.5" />{c.red ? "재현 테스트" : "수정 코드"}</TabsTrigger>
               <TabsTrigger value="v" className="rounded-full gap-1.5 text-[13px] data-[state=active]:bg-white"><ShieldCheck className="w-3.5 h-3.5" />재검증</TabsTrigger>
             </TabsList>
           </div>
@@ -612,11 +692,18 @@ function FixDialog({ idx, onClose }: { idx: number | null; onClose: () => void }
             <pre className={codeBox} style={{ background: "var(--ap-tile3)", color: "#d1d1d6" }}>{c.fix}</pre>
           </TabsContent>
           <TabsContent value="d" className="p-5 mt-0">
-            <pre className={codeBox} style={{ background: "var(--ap-tile3)" }}>
-              {c.diff.map(([k, t], i) => (
-                <div key={i} style={{ color: k === "add" ? "var(--ap-pass-ondark)" : k === "del" ? "var(--ap-crit-ondark)" : "#8e8e93" }}>{t}</div>
-              ))}
-            </pre>
+            {c.red ? (
+              <>
+                <div className="text-[12.5px] mb-2.5" style={{ color: "var(--ap-muted)" }}>고치기 전엔 실패하고, 고친 뒤엔 통과해야 하는 <b className="font-semibold" style={{ color: "var(--ap-ink)" }}>회귀 테스트(RED)</b> — 엔진이 이 취약점의 증거로부터 생성했습니다.</div>
+                <pre className={codeBox} style={{ background: "var(--ap-tile3)", color: "#d1d1d6" }}>{c.red}</pre>
+              </>
+            ) : (
+              <pre className={codeBox} style={{ background: "var(--ap-tile3)" }}>
+                {(c.diff || []).map(([k, t], i) => (
+                  <div key={i} style={{ color: k === "add" ? "var(--ap-pass-ondark)" : k === "del" ? "var(--ap-crit-ondark)" : "#8e8e93" }}>{t}</div>
+                ))}
+              </pre>
+            )}
           </TabsContent>
           <TabsContent value="v" className="p-5 mt-0">
             <div className="flex items-center gap-3 flex-wrap">
