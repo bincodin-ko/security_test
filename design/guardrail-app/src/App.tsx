@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
-  ShieldCheck, HelpCircle, Crosshair, Box, Wrench, BookOpen, RefreshCw,
+  ShieldCheck, Crosshair, Box, Wrench, BookOpen, RefreshCw,
   Search, Globe, Radar, Copy, Check, Play, Sparkles, FileDiff, Plus, Lock, ArrowRight,
 } from "lucide-react";
 
@@ -87,6 +87,19 @@ const STREAM: [string, string][] = [
   ["", "  GET /api/cards/1   owner check → 403   (ok)"],
 ];
 
+/* classic anon keys are JWTs whose payload carries the project ref →
+   we can derive the API URL from the key alone, so the URL field is
+   only needed for self-host / new sb_publishable_ keys. */
+function supaRefFromKey(key: string): string | null {
+  const parts = key.trim().split(".");
+  if (parts.length < 3) return null;
+  try {
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = JSON.parse(decodeURIComponent(escape(atob(b64))));
+    return typeof json.ref === "string" && /^[a-z0-9]{16,}$/.test(json.ref) ? json.ref : null;
+  } catch { return null; }
+}
+
 function Redact({ dark }: { dark?: boolean }) {
   return <span className="font-mono text-[.92em]" style={{ color: dark ? "#ffb86b" : "var(--ap-warn)", background: dark ? "rgba(255,255,255,.09)" : "#f6ede0", padding: "0 5px", borderRadius: 4 }}>redacted</span>;
 }
@@ -137,7 +150,11 @@ export default function App() {
   const [fixIdx, setFixIdx] = useState<number | null>(null);
   const raf = useRef<number>();
   const reduce = useMemo(() => matchMedia("(prefers-reduced-motion: reduce)").matches, []);
-  const withSupa = supaOpen && supaKey.trim().length > 0;
+  const derivedRef = useMemo(() => supaRefFromKey(supaKey), [supaKey]);
+  const derivedUrl = derivedRef ? `https://${derivedRef}.supabase.co` : "";
+  const needManualUrl = supaKey.trim().length > 0 && !derivedRef;
+  const supaReady = supaOpen && supaKey.trim().length > 0 && (!!derivedUrl || supaUrl.trim().length > 0);
+  const withSupa = supaReady;
 
   const runScan = () => {
     const h = url.replace(/^https?:\/\//, "").replace(/\/.*$/, "") || "my-vibe-app.vercel.app";
@@ -201,10 +218,24 @@ export default function App() {
                     <div className="flex items-center gap-2 text-[13px] font-semibold" style={{ color: "var(--ap-ink)" }}>
                       <Box className="w-4 h-4" style={{ color: "var(--ap-blue)" }} />RLS 정책까지 2계정으로 실제 검증
                     </div>
-                    <Input value={supaUrl} onChange={(e) => setSupaUrl(e.target.value)} placeholder="https://xxxx.supabase.co"
-                      className="rounded-full h-11 font-mono text-[14px] px-4 bg-white" />
+                    {/* anon key is enough — the project address is read from the key */}
                     <Input value={supaKey} onChange={(e) => setSupaKey(e.target.value)} type="password" placeholder="anon (public) key — eyJhbGc…"
                       className="rounded-full h-11 font-mono text-[14px] px-4 bg-white" />
+
+                    {derivedUrl && (
+                      <div className="flex items-center gap-1.5 text-[12.5px] px-1" style={{ color: "var(--ap-pass)" }}>
+                        <Check className="w-3.5 h-3.5 shrink-0" />
+                        프로젝트 자동 감지 · <span className="font-mono" style={{ color: "var(--ap-ink)" }}>{derivedRef}.supabase.co</span> <span style={{ color: "var(--ap-muted2)" }}>· 주소 입력 불필요</span>
+                      </div>
+                    )}
+                    {needManualUrl && (
+                      <>
+                        <Input value={supaUrl} onChange={(e) => setSupaUrl(e.target.value)} placeholder="https://xxxx.supabase.co"
+                          className="rounded-full h-11 font-mono text-[14px] px-4 bg-white" />
+                        <div className="text-[12.5px] px-1" style={{ color: "var(--ap-warn)" }}>이 키에서는 주소를 못 읽었어요 — self-host나 신형 키예요. 프로젝트 주소를 직접 넣어주세요.</div>
+                      </>
+                    )}
+
                     <div className="flex items-start gap-1.5 text-[12.5px] leading-[1.5]" style={{ color: "var(--ap-muted)" }}>
                       <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                       <span><b className="font-semibold" style={{ color: "var(--ap-ink)" }}>anon(public) 키만</b> 넣으세요 — service_role 키는 절대 넣지 마세요. 키는 브라우저에서만 쓰이고 서버에 저장되지 않습니다.</span>

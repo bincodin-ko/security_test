@@ -40,9 +40,13 @@
     --ap-warn:#a2560d; --ap-pass:#1d8a3f; --ap-pass-ondark:#5fd07f;
     --ap-shadow:0 3px 30px rgba(0,0,0,.22);
 
-    --font-display:-apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,"Apple SD Gothic Neo",Pretendard,"Malgun Gothic",sans-serif;
-    --font-text:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,"Apple SD Gothic Neo",Pretendard,"Malgun Gothic",sans-serif;
-    --font-mono:ui-monospace,"SF Mono",Menlo,"JetBrains Mono",monospace;
+    /* Apple devices get the real thing first: SF Pro (Latin) + Apple SD
+       Gothic Neo (Korean) via -apple-system. Everywhere else falls to
+       Noto Sans KR (Google Fonts) — the closest CSP-safe Apple-adjacent
+       Korean face — instead of the OS default (e.g. Malgun Gothic). */
+    --font-display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+    --font-text:-apple-system,BlinkMacSystemFont,"SF Pro Text","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
   }
 }
 
@@ -54,16 +58,17 @@
     background: hsl(var(--background));
     color: hsl(var(--foreground));
     font-family: var(--font-text);
-    letter-spacing: -0.01em;
+    letter-spacing: -0.003em;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
   .font-display { font-family: var(--font-display); }
   .font-mono { font-family: var(--font-mono); }
-  .font-num { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
-  /* Apple-tight display cadence */
-  .tight { letter-spacing: -0.022em; }
-  .tighter { letter-spacing: -0.032em; }
+  .font-num { font-family: var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  /* Apple-tight display cadence — eased for Korean so it never looks cramped */
+  .tight { letter-spacing: -0.012em; }
+  .tighter { letter-spacing: -0.02em; }
 }
 
 @layer components {
