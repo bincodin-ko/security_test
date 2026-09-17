@@ -1,0 +1,23 @@
+# 배포 전 보안 게이트. 확정 취약점이 있으면 배포를 막는다(exit 1).
+name: 가드레일 보안 게이트
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  security-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: 앱 기동 (프리뷰)
+        run: |
+          # 프로젝트에 맞게 수정: 앱을 백그라운드로 띄운다
+          npm ci && (npm run start &) && npx wait-on http://127.0.0.1:3000
+      - name: 보안 게이트 실행
+        env:
+          GATE_FAIL_ON: confirmed      # 확정 취약점 있으면 실패
+          GATE_MAX_SEVERITY: '1'       # 심각도 1 이상 전부 차단
+          # GATE_ALLOW: "I5 POST /api/orders/:id/status"   # 검토 후 승인한 항목 waive
+        run: node engine/gate.js http://127.0.0.1:3000 --src .
