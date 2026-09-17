@@ -6,7 +6,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   ShieldCheck, Crosshair, Box, Wrench, BookOpen, RefreshCw,
   Search, Globe, Radar, Copy, Check, Play, Sparkles, FileDiff, Plus, Lock, ArrowRight,
-  EyeOff, PenLine, KeyRound,
+  PenLine, KeyRound, Bug, Package, Workflow, Gauge,
 } from "lucide-react";
 
 type Cluster = {
@@ -442,7 +442,9 @@ export default function App() {
 
           {/* coverage gaps — parchment. Never hide what we couldn't reach. */}
           <Band tone="parch" className="pt-[44px] pb-[44px]">
-            <SectionHead title="검사하지 못한 영역" meta="여기는 아직 못 봤습니다 — 숨기지 않고 그대로 알려드립니다" />
+            <SectionHead title="검사하지 못한 영역" meta="숨기지 않고 그대로 알려드립니다 — 무엇을 못 봤는지 알아야 하니까" />
+
+            <div className="text-[13px] font-semibold mb-3" style={{ color: "var(--ap-ink)" }}>입력을 주면 지금 바로 넓힙니다</div>
             <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))" }}>
               {!withSupa && (
                 <CoverGap icon={<Box className="w-[18px] h-[18px]" />} title="Supabase RLS · 테이블 권한"
@@ -452,9 +454,29 @@ export default function App() {
               <CoverGap icon={<PenLine className="w-[18px] h-[18px]" />} title="쓰기·삭제 공격 (POST·PUT·DELETE)"
                 reason="데이터를 바꾸지 않으려고 읽기 전용으로 돌렸습니다. 켜면 상태 변경·삭제 권한까지 실제로 시도합니다."
                 action="심층 검사 (쓰기 포함) 다시 실행" onAction={runScan} />
-              <CoverGap icon={<KeyRound className="w-[18px] h-[18px]" />} title="로그인 뒤 화면"
+              <CoverGap icon={<KeyRound className="w-[18px] h-[18px]" />} title="로그인 뒤 화면 · 역할별 권한"
                 reason="세션 없이 접근되는 영역만 봤습니다. 테스트 계정을 주면 로그인 뒤 페이지·역할별 권한까지 검사합니다." />
             </div>
+
+            <div className="text-[13px] font-semibold mt-7 mb-3" style={{ color: "var(--ap-ink)" }}>이 스캔 방식이 다루지 않는 것 <span className="font-normal" style={{ color: "var(--ap-muted2)" }}>· 별도 방식이 필요합니다</span></div>
+            <div className="rounded-[18px] bg-white ap-hair overflow-hidden">
+              {[
+                [<Bug className="w-[17px] h-[17px]" />, "주입 공격 (SQLi · XSS · SSRF · 경로 탐색)", "권한·격리를 실행으로 확정하는 엔진입니다. 페이로드를 퍼징해 뚫는 주입 계열은 다른 엔진의 영역입니다."],
+                [<Package className="w-[17px] h-[17px]" />, "소스코드 · 의존성 · git 시크릿 (SCA · SAST)", "밖에서 실행만 보는 블랙박스 방식입니다. 취약 패키지·커밋된 키·정적 결함은 레포를 연결해야 봅니다."],
+                [<Workflow className="w-[17px] h-[17px]" />, "비즈니스 로직 · 레이스 컨디션", "가격 조작·수량 음수·결제 흐름 우회·동시성 문제는 앱 고유 규칙을 알아야 판단됩니다."],
+                [<Gauge className="w-[17px] h-[17px]" />, "속도 제한 · 무차별 대입", "당신 서비스에 부하를 주지 않으려고 일부러 몰아치지 않습니다. 레이트리밋은 별도로 점검하세요."],
+              ].map(([ic, t, d]: any, i, arr) => (
+                <div key={i} className="flex items-start gap-3 px-5 py-3.5" style={{ borderBottom: i === arr.length - 1 ? "none" : "1px solid var(--ap-divider)" }}>
+                  <span className="grid place-items-center w-8 h-8 rounded-full shrink-0 mt-0.5" style={{ background: "var(--ap-parch)", color: "var(--ap-muted)" }}>{ic}</span>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-semibold" style={{ color: "var(--ap-ink)" }}>{t}</div>
+                    <div className="text-[13px] leading-[1.5] mt-0.5" style={{ color: "var(--ap-muted)" }}>{d}</div>
+                  </div>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-full shrink-0 ml-auto" style={{ background: "#f0f0f2", color: "var(--ap-muted2)" }}>범위 밖</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[12.5px] mt-3" style={{ color: "var(--ap-muted2)" }}>가드레일은 <b className="font-semibold" style={{ color: "var(--ap-ink)" }}>“남의 데이터가 새는가”</b>(권한·격리·RLS·시크릿)를 실행으로 확정하는 데 집중합니다. 위 항목은 SCA·SAST·퍼징 도구와 함께 쓰면 빈틈이 없습니다.</p>
           </Band>
 
           {/* watch — white */}
