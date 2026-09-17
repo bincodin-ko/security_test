@@ -2,7 +2,7 @@
 <meta name="description" content="바이브코딩으로 만든 앱의 보안 취약점을 실제로 공격해 증명하고, 고칠 프롬프트까지 주는 스캔 리포트" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@400;500;700;900&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" />
 <script src="https://cdn.tailwindcss.com/3.4.16"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.460.0/lucide.min.js"></script>
@@ -11,14 +11,15 @@
     theme: {
       extend: {
         colors: {
-          bg:'#0b0f17', surface:'#141a26', surface2:'#1a2130',
-          bd:'#232c3d', bdsoft:'#1c2433', ink:'#e6edf7', muted:'#8a97ab', faint:'#5b6779',
-          accent:'#3ea6ff', accentdim:'#1e3a52',
-          crit:'#f0464a', critbg:'#2a1116', warn:'#f5a524', warnbg:'#2a2010', pass:'#2fbf71', passbg:'#0f2419',
+          bg:'#16202e', surface:'#1f2b3c', surface2:'#2b3a4f',
+          bd:'#38495f', bdsoft:'#2a3648', ink:'#eef4fb', muted:'#a4b4c8', faint:'#6b7d93',
+          accent:'#4db0ff', accentdim:'#274a63',
+          crit:'#ff5b60', critbg:'#3a1a1d', warn:'#ffb42e', warnbg:'#3a2c12', pass:'#3ad787', passbg:'#123526',
         },
         fontFamily: {
-          display:["'Black Han Sans'","'Noto Sans KR'","sans-serif"],
-          sans:["'Noto Sans KR'","system-ui","sans-serif"],
+          display:["'Gothic A1'","sans-serif"],
+          sans:["'Gothic A1'","system-ui","sans-serif"],
+          grotesk:["'Space Grotesk'","sans-serif"],
           mono:["'JetBrains Mono'","ui-monospace","monospace"],
         },
       },
@@ -37,15 +38,15 @@
     .diff-add { @apply text-pass; } .diff-del { @apply text-crit; } .diff-ctx { @apply text-faint; }
   }
   @media (prefers-reduced-motion: reduce){ *{transition:none!important;animation:none!important} }
-  :focus-visible{ outline:2px solid #3ea6ff; outline-offset:2px; }
+  :focus-visible{ outline:2px solid #4db0ff; outline-offset:2px; }
   .evi::-webkit-scrollbar,.pre::-webkit-scrollbar{height:6px}
   .evi::-webkit-scrollbar-thumb,.pre::-webkit-scrollbar-thumb{background:#2a3547;border-radius:3px}
 </style>
 
 <header class="sticky z-20 border-b border-bd bg-bg/85 backdrop-blur" style="top:env(safe-area-inset-top,0px)">
   <div class="mx-auto max-w-[1080px] px-5 py-3.5 flex items-center gap-3.5 flex-wrap">
-    <div class="flex items-center gap-2.5 font-display text-xl tracking-wide">
-      <span class="w-2.5 h-2.5 rounded-[3px] bg-accent" style="box-shadow:0 0 0 4px #1e3a52"></span>가드레일
+    <div class="flex items-center gap-2.5 font-display font-black text-xl tracking-wide">
+      <span class="w-2.5 h-2.5 rounded-[3px] bg-accent" style="box-shadow:0 0 0 4px #274a63"></span>가드레일
     </div>
     <div class="ml-auto min-w-0 flex items-center gap-2 bg-surface border border-bd rounded-lg px-3 py-1.5 font-mono text-[13px] text-muted">
       <svg data-lucide="globe" class="w-[15px] h-[15px] shrink-0"></svg>
@@ -62,31 +63,31 @@
   <!-- lede -->
   <section class="pt-7 pb-2">
     <div class="font-mono text-xs tracking-[2px] uppercase text-accent">스캔 완료 · 6분 전</div>
-    <h1 class="font-display leading-[1.08] mt-2.5 text-[clamp(28px,5vw,40px)]">
+    <h1 class="font-display font-black leading-[1.08] mt-2.5 text-[clamp(28px,5vw,40px)]">
       지금 <span class="text-crit">6곳</span>에서 남의 데이터가 새고 있습니다
     </h1>
     <p class="text-muted mt-3 max-w-[60ch] text-[15px]">
-      추측이 아닙니다. 계정 두 개로 <b class="text-ink font-medium">실제로 공격을 실행</b>해서 뚫리는 것을 확인했습니다.
-      각 항목마다 어떻게 뚫었는지 증거와, AI에게 붙여넣을 수정 프롬프트를 드립니다.
+      라우트를 스스로 찾아 <b class="text-ink font-medium">불변식 6개</b>로 검사하고, 독립 에이전트가 <b class="text-ink font-medium">반박</b>한 뒤,
+      격리 환경에서 <b class="text-ink font-medium">실제로 뚫어 증명</b>한 것만 보여드립니다. 각 항목마다 증거와 AI에게 붙여넣을 수정 프롬프트를 드립니다.
     </p>
 
     <div class="grid md:grid-cols-[1.4fr_1fr] gap-4 mt-5.5" style="margin-top:1.4rem">
       <div class="grid grid-cols-3 gap-3">
         <div class="relative overflow-hidden rounded-xl border border-bd bg-surface p-4">
           <span class="absolute inset-y-0 left-0 w-1 bg-crit"></span>
-          <div class="font-mono font-bold text-[40px] leading-none tracking-tight text-crit tnum">6</div>
+          <div class="font-grotesk font-bold text-[44px] leading-none tracking-tight text-crit tnum">6</div>
           <div class="flex items-center gap-1.5 mt-2.5 text-[13px] text-muted"><svg data-lucide="shield-alert" class="w-3.5 h-3.5"></svg>확정</div>
           <div class="text-xs text-faint mt-0.5">실제로 뚫림</div>
         </div>
         <div class="relative overflow-hidden rounded-xl border border-bd bg-surface p-4">
           <span class="absolute inset-y-0 left-0 w-1 bg-warn"></span>
-          <div class="font-mono font-bold text-[40px] leading-none tracking-tight text-warn tnum">3</div>
+          <div class="font-grotesk font-bold text-[44px] leading-none tracking-tight text-warn tnum">3</div>
           <div class="flex items-center gap-1.5 mt-2.5 text-[13px] text-muted"><svg data-lucide="help-circle" class="w-3.5 h-3.5"></svg>확인 필요</div>
           <div class="text-xs text-faint mt-0.5">당신 판단 필요</div>
         </div>
         <div class="relative overflow-hidden rounded-xl border border-bd bg-surface p-4">
           <span class="absolute inset-y-0 left-0 w-1 bg-pass"></span>
-          <div class="font-mono font-bold text-[40px] leading-none tracking-tight text-pass tnum">48</div>
+          <div class="font-grotesk font-bold text-[44px] leading-none tracking-tight text-pass tnum">48</div>
           <div class="flex items-center gap-1.5 mt-2.5 text-[13px] text-muted"><svg data-lucide="shield-check" class="w-3.5 h-3.5"></svg>통과</div>
           <div class="text-xs text-faint mt-0.5">검사했고 안전</div>
         </div>
@@ -96,18 +97,18 @@
         <div class="flex-1 relative min-h-[150px] flex items-center justify-center">
           <canvas id="donut" aria-label="확정 6, 확인필요 3, 통과 48"></canvas>
           <div class="absolute text-center pointer-events-none">
-            <b class="font-mono text-[26px] leading-none block tnum">57</b><span class="text-[11px] text-muted">검사한 엔드포인트</span>
+            <b class="font-grotesk font-bold text-[28px] leading-none block tnum">57</b><span class="text-[11px] text-muted">검사한 엔드포인트</span>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <div class="flex items-baseline gap-3 mt-8 mb-1"><h2 class="font-display text-[22px]">확정된 취약점</h2>
-    <span class="font-mono text-xs text-faint ml-auto">심각도순 · 근본원인별로 묶음 (중복 46% 제거)</span></div>
+  <div class="flex items-baseline gap-3 mt-8 mb-1"><h2 class="font-display font-black text-[22px]">확정된 취약점</h2>
+    <span class="font-mono text-xs text-faint ml-auto">심각도순 · 독립 반증 통과분만 · 근본원인별 묶음 (중복 46% 제거)</span></div>
   <div id="clusters" class="flex flex-col gap-3 mt-3.5"></div>
 
-  <div class="flex items-baseline gap-3 mt-8 mb-1"><h2 class="font-display text-[22px]">확인이 필요합니다</h2>
+  <div class="flex items-baseline gap-3 mt-8 mb-1"><h2 class="font-display font-black text-[22px]">확인이 필요합니다</h2>
     <span class="font-mono text-xs text-faint ml-auto">뚫릴 수 있으나, 의도 여부는 당신만 압니다</span></div>
   <div class="rounded-xl border border-bd bg-surface mt-3.5 overflow-hidden">
     <div class="flex items-center gap-3 px-4 py-3 border-b border-bdsoft text-[13.5px] flex-wrap">
@@ -127,7 +128,7 @@
       <span class="text-faint text-xs ml-auto text-right">크라운 주얼 — 키 관리 점검</span></div>
   </div>
 
-  <div class="flex items-baseline gap-3 mt-8 mb-1"><h2 class="font-display text-[22px]">통과한 검사</h2>
+  <div class="flex items-baseline gap-3 mt-8 mb-1"><h2 class="font-display font-black text-[22px]">통과한 검사</h2>
     <span class="font-mono text-xs text-faint ml-auto">무엇을 검사했는지 알아야 하니까</span></div>
   <div class="rounded-xl border border-bd bg-surface mt-3.5 overflow-hidden">
     <div class="flex items-center gap-3 px-4 py-3 border-b border-bdsoft text-[13.5px] flex-wrap">
@@ -149,8 +150,8 @@
       <svg data-lucide="more-horizontal" class="w-4 h-4"></svg><span>그 외 45개 검사 통과</span></div>
   </div>
 
-  <div class="mt-7 mb-10 rounded-xl border border-dashed border-bd p-5" style="background:linear-gradient(180deg,#141a26,transparent)">
-    <h3 class="font-display text-[17px] flex items-center gap-2.5"><svg data-lucide="radar" class="w-[18px] h-[18px] text-accent"></svg>배포할 때마다 자동으로 다시 지켜봅니다</h3>
+  <div class="mt-7 mb-10 rounded-xl border border-dashed border-bd p-5" style="background:linear-gradient(180deg,#1f2b3c,transparent)">
+    <h3 class="font-display font-black text-[17px] flex items-center gap-2.5"><svg data-lucide="radar" class="w-[18px] h-[18px] text-accent"></svg>배포할 때마다 자동으로 다시 지켜봅니다</h3>
     <div class="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-2.5 mt-3.5">
       <div class="bg-surface border border-bdsoft rounded-lg px-3.5 py-3"><div class="text-xs text-faint font-mono">배포 감지</div><div class="text-[13.5px] mt-0.5">새 엔드포인트만 <b class="text-accent">즉시 재검사</b></div></div>
       <div class="bg-surface border border-bdsoft rounded-lg px-3.5 py-3"><div class="text-xs text-faint font-mono">매일 새벽</div><div class="text-[13.5px] mt-0.5">전체 읽기전용 스윕</div></div>
@@ -230,23 +231,25 @@ function diffHTML(rows){return rows.map(([k,t])=>`<span class="diff-${k}">${esc(
 const wrap = document.getElementById('clusters');
 CLUSTERS.forEach((c,i)=>{
   const sevCls = c.sev===4 ? 'bg-warn' : 'bg-crit';
-  const sevPill = c.sev===4 ? 'bg-warnbg text-warn border-[#402d0e]' : 'bg-critbg text-crit border-[#43181d]';
+  const sevPill = c.sev===4 ? 'bg-warnbg text-warn border-[#5a4016]' : 'bg-critbg text-crit border-[#5a2328]';
   const el = document.createElement('div');
-  el.className = 'grid grid-cols-[5px_1fr] rounded-xl border border-bd bg-surface overflow-hidden hover:border-[#31435c] transition';
+  el.className = 'grid grid-cols-[5px_1fr] rounded-xl border border-bd bg-surface overflow-hidden hover:border-[#46597a] transition';
   el.innerHTML = `
     <div class="${sevCls}"></div>
     <div class="p-4 sm:px-[17px]">
       <div class="flex items-center gap-2.5 flex-wrap">
         <span class="font-mono font-bold text-xs px-2 py-[3px] rounded-md border ${sevPill}">${c.sev}/5</span>
+        <span class="inline-flex items-center gap-1 font-mono text-[11px] px-2 py-[3px] rounded-md border border-[#2a6547] bg-passbg text-pass"><svg data-lucide="shield-check" class="w-3 h-3"></svg>반증 통과</span>
         <span class="font-mono text-sm font-medium"><span class="text-accent font-bold">${c.method}</span> ${esc(c.route)}</span>
         <span class="flex gap-1.5 sm:ml-auto">${c.invs.map(v=>`<span class="font-mono text-[11px] text-muted border border-bd rounded px-1.5 py-0.5">${v}</span>`).join('')}</span>
       </div>
       <div class="font-bold text-[15px] mt-2.5">${esc(c.title)}</div>
       <div class="text-muted text-[13.5px] mt-1">근본원인: ${c.cause}</div>
-      <div class="mt-3 rounded-lg border border-bdsoft overflow-hidden" style="background:#0c1119">
+      <div class="mt-3 rounded-lg border border-bdsoft overflow-hidden" style="background:#101825">
         <div class="flex items-center gap-1.5 px-[11px] py-2 border-b border-bdsoft font-mono text-[11.5px] tracking-wide uppercase text-pass">
-          <svg data-lucide="crosshair" class="w-[13px] h-[13px]"></svg>실제로 이렇게 뚫었습니다</div>
-        <pre class="evi m-0 px-[13px] py-[11px] font-mono text-[12.5px] leading-[1.6] text-[#c7d3e5] overflow-x-auto whitespace-pre-wrap break-words">${redactHTML(c.evidence[0])}\n<span class="text-faint">→</span> ${redactHTML(c.evidence[1])}</pre>
+          <svg data-lucide="crosshair" class="w-[13px] h-[13px]"></svg>실제로 이렇게 뚫었습니다
+          <span class="ml-auto inline-flex items-center gap-1 text-[10.5px] normal-case tracking-normal text-faint"><svg data-lucide="box" class="w-[11px] h-[11px]"></svg>격리 VM에서 실행 · XBOW·E2B</span></div>
+        <pre class="evi m-0 px-[13px] py-[11px] font-mono text-[12.5px] leading-[1.6] text-[#d4e0ef] overflow-x-auto whitespace-pre-wrap break-words">${redactHTML(c.evidence[0])}\n<span class="text-faint">→</span> ${redactHTML(c.evidence[1])}</pre>
       </div>
       <div class="flex gap-2.5 mt-3 flex-wrap">
         <button class="inline-flex items-center gap-1.5 rounded-lg bg-accent text-[#04121f] font-bold text-[13px] px-3.5 py-2 hover:brightness-110 transition" data-fix="${i}"><svg data-lucide="wrench" class="w-[15px] h-[15px]"></svg>고치기</button>
@@ -260,9 +263,9 @@ CLUSTERS.forEach((c,i)=>{
         </div>
         <div class="px-4 sm:px-[17px] pt-4 pb-[18px]" id="p${i}p">
           <div class="flex items-center gap-2.5 mb-2.5"><button class="inline-flex items-center gap-1.5 rounded-lg border border-bd bg-surface text-ink text-[13px] font-medium px-3.5 py-2 hover:border-accent transition" data-copy="${i}"><svg data-lucide="copy" class="w-[15px] h-[15px]"></svg>프롬프트 복사</button><span class="text-[12.5px] text-muted">Cursor·Claude Code 에 붙여넣으면 바로 고칩니다</span></div>
-          <pre class="pre m-0 rounded-lg border border-bdsoft p-3.5 font-mono text-[12.5px] leading-[1.65] overflow-x-auto whitespace-pre-wrap break-words text-[#c7d3e5]" style="background:#0c1119" id="prompt${i}">${esc(c.fix)}</pre>
+          <pre class="pre m-0 rounded-lg border border-bdsoft p-3.5 font-mono text-[12.5px] leading-[1.65] overflow-x-auto whitespace-pre-wrap break-words text-[#d4e0ef]" style="background:#101825" id="prompt${i}">${esc(c.fix)}</pre>
         </div>
-        <div class="px-4 sm:px-[17px] pt-4 pb-[18px]" id="p${i}d" hidden><pre class="pre m-0 rounded-lg border border-bdsoft p-3.5 font-mono text-[12.5px] leading-[1.65] overflow-x-auto whitespace-pre-wrap break-words" style="background:#0c1119">${diffHTML(c.diff)}</pre></div>
+        <div class="px-4 sm:px-[17px] pt-4 pb-[18px]" id="p${i}d" hidden><pre class="pre m-0 rounded-lg border border-bdsoft p-3.5 font-mono text-[12.5px] leading-[1.65] overflow-x-auto whitespace-pre-wrap break-words" style="background:#101825">${diffHTML(c.diff)}</pre></div>
         <div class="px-4 sm:px-[17px] pt-4 pb-[18px]" id="p${i}v" hidden>
           <div class="flex items-center gap-3 flex-wrap">
             <button class="inline-flex items-center gap-1.5 rounded-lg bg-accent text-[#04121f] font-bold text-[13px] px-3.5 py-2 hover:brightness-110 transition" data-rv="${i}"><svg data-lucide="play" class="w-[15px] h-[15px]"></svg>같은 공격 다시 실행</button>
@@ -279,7 +282,7 @@ function styleTabs(){
   document.querySelectorAll('.tab').forEach(t=>{
     const on = t.getAttribute('aria-selected')==='true';
     t.classList.remove('!text-ink','!border-b-accent','text-muted','border-b-transparent');
-    t.style.background = on ? '#0c1119' : 'transparent';
+    t.style.background = on ? '#101825' : 'transparent';
     t.classList.add(...(on?ACTIVE.split(' '):IDLE.split(' ')));
   });
 }
@@ -306,7 +309,7 @@ document.addEventListener('click', e=>{
   if(rv){ const box=document.getElementById('rv'+rv.dataset.rv);
     box.textContent='공격 재실행 중…'; box.className='font-mono text-[13px] px-3.5 py-2 rounded-lg border border-bd text-muted';
     setTimeout(()=>{ box.innerHTML='이제 막힙니다 ✓  <b>403 Forbidden</b>';
-      box.className='font-mono text-[13px] px-3.5 py-2 rounded-lg border border-[#1c4a33] bg-passbg text-pass'; },900); return; }
+      box.className='font-mono text-[13px] px-3.5 py-2 rounded-lg border border-[#2a6547] bg-passbg text-pass'; },900); return; }
 });
 
 document.getElementById('rescan').addEventListener('click',function(){
@@ -316,7 +319,7 @@ document.getElementById('rescan').addEventListener('click',function(){
 
 new Chart(document.getElementById('donut'),{type:'doughnut',
   data:{labels:['확정','확인 필요','통과'],datasets:[{data:[6,3,48],
-    backgroundColor:['#f0464a','#f5a524','#2fbf71'],borderColor:'#141a26',borderWidth:3,hoverOffset:4}]},
+    backgroundColor:['#ff5b60','#ffb42e','#3ad787'],borderColor:'#1f2b3c',borderWidth:3,hoverOffset:4}]},
   options:{cutout:'72%',plugins:{legend:{display:false},tooltip:{bodyFont:{family:"'JetBrains Mono'"},
     callbacks:{label:c=>` ${c.label}: ${c.raw}개`}}},responsive:true,maintainAspectRatio:false}});
 
