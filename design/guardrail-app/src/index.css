@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Guardrail dark-committed palette mapped onto shadcn HSL tokens */
+@layer base {
+  :root {
+    --background: 213 30% 13%;      /* #16202e */
+    --foreground: 213 55% 95%;      /* #eef4fb */
+    --card: 214 31% 18%;            /* #1f2b3c */
+    --card-foreground: 213 55% 95%;
+    --popover: 214 31% 18%;
+    --popover-foreground: 213 55% 95%;
+    --primary: 205 100% 65%;        /* #4db0ff accent */
+    --primary-foreground: 210 80% 7%;
+    --secondary: 214 28% 24%;
+    --secondary-foreground: 213 55% 95%;
+    --muted: 214 28% 24%;
+    --muted-foreground: 213 22% 71%; /* #a4b4c8 */
+    --accent: 214 28% 24%;
+    --accent-foreground: 213 55% 95%;
+    --destructive: 358 100% 68%;     /* #ff5b60 */
+    --destructive-foreground: 213 55% 95%;
+    --border: 213 25% 30%;           /* #38495f */
+    --input: 213 25% 30%;
+    --ring: 205 100% 65%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * { border-color: hsl(var(--border)); }
+  body {
+    margin: 0;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: 'Gothic A1', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .font-num { font-family: 'Space Grotesk', 'Gothic A1', sans-serif; font-variant-numeric: tabular-nums; }
+}
+
+/* semantic colors + scan animation */
+:root {
+  --gr-crit:#ff5b60; --gr-critbg:#3a1a1d; --gr-critbd:#5a2328;
+  --gr-warn:#ffb42e; --gr-warnbg:#3a2c12;
+  --gr-pass:#3ad787; --gr-passbg:#123526; --gr-passbd:#2a6547;
+  --gr-accent:#4db0ff; --gr-code:#101825; --gr-faint:#6b7d93; --gr-bdsoft:#2a3648;
+}
+.gr-crit{color:var(--gr-crit)} .gr-warn{color:var(--gr-warn)} .gr-pass{color:var(--gr-pass)} .gr-accent{color:var(--gr-accent)}
+.gr-redact{color:var(--gr-warn);background:var(--gr-warnbg);padding:0 4px;border-radius:3px}
+@keyframes gr-flow{from{transform:translateY(0)}to{transform:translateY(-50%)}}
+.gr-flow{animation:gr-flow 3.4s linear infinite}
+@keyframes gr-sweep{0%{top:2%;opacity:0}12%{opacity:1}88%{opacity:1}100%{top:96%;opacity:0}}
+.gr-sweep{animation:gr-sweep 1.25s cubic-bezier(.5,0,.5,1) infinite}
+@keyframes gr-blink{50%{opacity:0}} .gr-blink{animation:gr-blink 1s step-end infinite}
+@media (prefers-reduced-motion:reduce){.gr-flow,.gr-sweep,.gr-blink{animation:none!important}}
