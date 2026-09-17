@@ -184,5 +184,6 @@ async function I6_secrets(ctx, route, out) {
   }
 }
 
-const ALL = [I1_isolation, I2_privilege, I3_anonymous, I4_input, I5_state, I6_secrets];
+const { I7_injection } = require('./injection');
+const ALL = [I1_isolation, I2_privilege, I3_anonymous, I4_input, I5_state, I6_secrets, I7_injection];
 module.exports = { ALL, req };

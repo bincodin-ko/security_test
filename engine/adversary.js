@@ -117,6 +117,9 @@ const DISPROVERS = {
       ? { survives: true, why: `field "${m[1]}" carries a server-only value`, evidence: Sandbox.redact(`${m[1]}=${m[2]}`) }
       : { survives: false, why: 'no server-only field present on re-check' };
   },
+
+  // I7 re-derives the injection oracle independently (see injection.js).
+  I7: (ctx, f) => require('./injection').disproveI7(ctx, f),
 };
 
 async function falsify(ctx, candidates) {

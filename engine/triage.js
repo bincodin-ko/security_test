@@ -10,7 +10,7 @@
  */
 
 // Severity model: likelihood x impact, per Cloudflare "severity requires impact".
-const IMPACT = { I1: 5, I2: 5, I3: 4, I4: 5, I5: 3, I6: 4 };
+const IMPACT = { I1: 5, I2: 5, I3: 4, I4: 5, I5: 3, I6: 4, I7: 5 };
 const ANON_BONUS = 1; // reachable with no credentials = worse
 
 function severity(f) {
@@ -28,9 +28,12 @@ function cluster(confirmed) {
     g.push({ ...f, severity: severity(f) });
     groups.set(f.route, g);
   }
+  // On a severity tie, headline the class that best names the root cause
+  // (an exploitable injection outranks a same-severity access finding).
+  const TIE = { I7: 0, I1: 1, I6: 2, I3: 3, I2: 4, I4: 5, I5: 6 };
   const clustered = [];
   for (const [route, fs] of groups) {
-    fs.sort((a, b) => b.severity - a.severity);
+    fs.sort((a, b) => b.severity - a.severity || (TIE[a.inv] ?? 9) - (TIE[b.inv] ?? 9));
     const primary = fs[0];
     const also = fs.slice(1);
     // Root-cause hint: multiple invariants on one route usually share a cause.
@@ -58,6 +61,7 @@ function inferCause(invs) {
   if (set.has('I3')) return 'missing authentication on this route';
   if (set.has('I6')) return 'response serialises a server-only field';
   if (set.has('I4')) return 'server trusts a client-supplied privileged field';
+  if (set.has('I7')) return 'user input reaches a SQL query or HTML unescaped — use parameterised queries and output encoding';
   return 'see individual findings';
 }
 

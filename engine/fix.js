@@ -52,6 +52,17 @@ assert(!/password|hash|secret|token|api[_-]?key/i.test(JSON.stringify(res.body))
   'response carries a server-only field');`,
     remediation: 'Select explicit columns instead of SELECT *, or strip the field in a serializer shared by every route that returns this object.',
   }),
+  I7: f => ({
+    name: `${f.route} must not be injectable`,
+    intent: 'A breaking character or tautology in user input must not reach the query or the HTML.',
+    code: `const user = await login(ACCOUNT_B);
+const err = await request('${f.method}', '${f.pathTemplate}' + '?q=' + encodeURIComponent("'"), user.token);
+assert(err.status < 500, 'a lone quote caused a server/DB error — input reaches the query');
+const none = await request('${f.method}', '${f.pathTemplate}' + '?q=zzq_nomatch', user.token);
+const all  = await request('${f.method}', '${f.pathTemplate}' + '?q=' + encodeURIComponent("%' OR '1'='1"), user.token);
+assert(rows(all.body) <= rows(none.body), 'a tautology changed the result set — SQL injection');`,
+    remediation: 'Use parameterised queries / prepared statements — never build SQL by string-concatenating input. For output, escape or contextually encode user values before placing them in HTML. Do not return DB error text or stack traces to the client.',
+  }),
 };
 
 function redTest(finding) {

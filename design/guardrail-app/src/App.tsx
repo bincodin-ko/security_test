@@ -6,7 +6,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   ShieldCheck, Crosshair, Box, Wrench, BookOpen, RefreshCw,
   Search, Globe, Radar, Copy, Check, Play, Sparkles, FileDiff, Plus, Lock, ArrowRight,
-  PenLine, KeyRound, Bug, Package, Workflow, Gauge,
+  PenLine, KeyRound, Package, Workflow, Gauge,
 } from "lucide-react";
 
 type Cluster = {
@@ -45,13 +45,13 @@ const DEMO_CLUSTERS: Cluster[] = [
     ev1: '{"id":1,"owner_id":1,"title":"Alice private","body":"alice sec[[R]]"}',
     fix: '"/api/notes/:id" 에서 글을 불러온 뒤 owner_id 를 인증된 사용자와 비교하세요. 삭제(DELETE) 경로에도 같은 검사를 넣으세요 — 읽기만 막고 삭제를 열어두는 실수가 흔합니다.',
     diff: [["ctx", '  const note = db.prepare("SELECT * FROM notes WHERE id=?").get(id)'], ["add", "+ if (note.owner_id !== req.user.id) return res.status(403).end()"], ["ctx", "  res.json(note)"]] },
-  { inv: ["I2"], method: "GET", route: "/api/search", src: "목록 필터 누락 · I2",
-    title: "검색하면 남의 비공개 글까지 결과에 나옵니다",
-    cause: "검색 쿼리에 **본인 소유 필터가 없어** 전체 테이블을 뒤집니다.",
-    ev0: '밥이 "Alice"로 검색 → 앨리스의 비공개 글이 결과에:',
-    ev1: '[{"id":1,"owner_id":1,"title":"Alice private", …}]',
-    fix: "검색 쿼리에 WHERE owner_id = :me 를 추가하세요. 목록·검색 API 는 항상 호출자 소유로 범위를 좁혀야 합니다. UI 에서 숨기는 것은 통제가 아닙니다.",
-    diff: [["del", "- SELECT * FROM notes WHERE title LIKE ?"], ["add", "+ SELECT * FROM notes WHERE title LIKE ? AND owner_id = ?"]] },
+  { inv: ["I7", "I2"], method: "GET", route: "/api/search", src: "주입 · 실행 확인",
+    title: "검색창에 넣은 값이 SQL 쿼리로 그대로 들어갑니다",
+    cause: "입력을 문자열로 쿼리에 이어붙입니다 — **파라미터라이즈드 쿼리**로 바꾸면 주입도, 남의 글 노출도 함께 막힙니다.",
+    ev0: "작은따옴표 하나로 DB가 터집니다 (주입 가능 증거):",
+    ev1: `?q=' → 500 {"error":"unrecognized token","stack":"SqliteError[[R]]"} · "abc" → 200`,
+    fix: '"/api/search" 에서 문자열로 SQL을 조립하지 말고 파라미터라이즈드 쿼리(prepared statement)를 쓰세요. 출력은 인코딩하고, DB 에러·스택은 클라이언트에 노출하지 마세요. 같은 쿼리에 owner 필터도 더하세요.',
+    diff: [["del", "- db.prepare(`SELECT * FROM notes WHERE title LIKE '%${q}%'`)"], ["add", "+ db.prepare('SELECT * FROM notes WHERE title LIKE ? AND owner_id = ?')"], ["add", "+   .all('%'+q+'%', req.user.id)"]] },
   { inv: ["I2", "I6"], method: "GET", route: "/api/admin/users", src: "BFLA · 역할 검사 없음",
     title: "일반 사용자가 관리자 회원 목록을 통째로 봅니다",
     cause: "로그인만 하면 접근됩니다 — **역할(role) 검사가 없습니다**. 응답엔 비밀번호 해시까지 포함됩니다.",
@@ -70,7 +70,7 @@ const DEMO_CLUSTERS: Cluster[] = [
 
 const PIPE = [
   ["01", "발견", "라우트 자동 탐색", "Cloudflare"],
-  ["02", "검사", "불변식 I1–I6", "고유 · RLS · 2계정"],
+  ["02", "검사", "불변식 I1–I7", "고유 · RLS · 2계정"],
   ["03", "반박", "적대적 반증", "Cloudflare · VulnHunter"],
   ["04", "증명", "격리 실행 PoC", "XBOW · E2B"],
   ["05", "정리", "노이즈 제거", "Aikido"],
@@ -182,7 +182,7 @@ export default function App() {
   const supaReady = supaOpen && supaKey.trim().length > 0 && (!!derivedUrl || supaUrl.trim().length > 0);
   const withSupa = supaReady;
 
-  const STAGES = ["라우트 발견", "불변식 I1–I6 검사", "적대적 반증", "격리 증명", "결과 정리"];
+  const STAGES = ["라우트 발견", "불변식 I1–I7 검사", "적대적 반증", "격리 증명", "결과 정리"];
 
   // fake-animate the demo when no backend is reachable (keeps the artifact usable)
   const demoAnimate = () => {
@@ -256,7 +256,7 @@ export default function App() {
                 찾고 · 반박하고 · 증명하고<br />고치고 · 계속 지킵니다
               </h1>
               <p className="mx-auto mt-6 text-[clamp(17px,2.4vw,21px)] leading-[1.45] max-w-[64ch]" style={{ color: "var(--ap-muted)" }}>
-                URL만 넣으면 라우트를 스스로 찾아 불변식 6개로 검사하고, 독립 에이전트가 반박한 뒤,
+                URL만 넣으면 라우트를 스스로 찾아 불변식 7개로 검사하고, 독립 에이전트가 반박한 뒤,
                 격리 환경에서 실제로 뚫어 증명하고, 고칠 프롬프트까지 드립니다.
               </p>
 
@@ -426,7 +426,7 @@ export default function App() {
               지금 <span style={{ color: "var(--ap-crit)" }}>{confirmedN}곳</span>에서<br className="sm:hidden" /> 남의 데이터가 새고 있습니다
             </h1>
             <p className="mt-4 text-[clamp(17px,2.2vw,20px)] leading-[1.45] max-w-[70ch]" style={{ color: "var(--ap-muted)" }}>
-              라우트를 스스로 찾아 불변식 6개로 검사하고, 독립 에이전트가 반박한 뒤, 격리 환경에서 실제로 뚫어 증명한 것만 보여드립니다.
+              라우트를 스스로 찾아 불변식 7개로 검사하고, 독립 에이전트가 반박한 뒤, 격리 환경에서 실제로 뚫어 증명한 것만 보여드립니다.
             </p>
 
             <div className="grid md:grid-cols-[1.6fr_1fr] gap-4 mt-9">
@@ -445,7 +445,7 @@ export default function App() {
                   <Legend c="var(--ap-crit)" t={`확정 ${N.conf}`} />
                   <Legend c="var(--ap-warn)" t={`확인 필요 ${N.need}`} />
                   <Legend c="var(--ap-pass)" t={`통과 ${N.pass}`} />
-                  <div className="font-mono text-[11.5px] mt-2" style={{ color: "var(--ap-muted2)" }}>불변식 I1–I6{data ? ` · 노이즈 −${data.meta.dedupe}%` : " · 노이즈 −46%"}</div>
+                  <div className="font-mono text-[11.5px] mt-2" style={{ color: "var(--ap-muted2)" }}>불변식 I1–I7{data ? ` · 노이즈 −${data.meta.dedupe}%` : " · 노이즈 −46%"}</div>
                 </div>
               </div>
             </div>
@@ -535,13 +535,31 @@ export default function App() {
                 action="심층 검사 (쓰기 포함) 다시 실행" onAction={runScan} />
               <CoverGap icon={<KeyRound className="w-[18px] h-[18px]" />} title="로그인 뒤 화면 · 역할별 권한"
                 reason="세션 없이 접근되는 영역만 봤습니다. 테스트 계정을 주면 로그인 뒤 페이지·역할별 권한까지 검사합니다." />
+              <CoverGap icon={<Package className="w-[18px] h-[18px]" />} title="소스 · 의존성 · 시크릿 (SCA · SAST)"
+                reason="레포(락파일·소스)를 연결하면 취약 패키지(OSV), 하드코딩된 시크릿, 위험한 SQL·실행 싱크를 검사합니다. SAST가 의심한 싱크는 아래 실행 검사로 확정합니다."
+                action="레포 연결하기" onAction={openSupaInput} />
+            </div>
+
+            <div className="text-[13px] font-semibold mt-7 mb-3" style={{ color: "var(--ap-ink)" }}>지금 함께 검사하는 것 <span className="font-normal" style={{ color: "var(--ap-pass)" }}>· 이번 스캔에 포함됨</span></div>
+            <div className="rounded-[18px] overflow-hidden" style={{ border: "1px solid #cde7d5", background: "#f4fbf6" }}>
+              {[
+                ["주입 공격 (SQLi · 반영형 XSS · 경로 탐색)", "불변식 I7 — 작은따옴표·항진식·../ 를 실제로 넣어보고, 독립 반증까지 통과한 것만 확정합니다.", "확정: SQL 인젝션"],
+                ["권한 · 격리 · RLS · 시크릿 노출", "불변식 I1–I7 — 2계정으로 실제로 두드려 확정합니다.", "핵심"],
+              ].map(([t, d, tag]: any, i, arr) => (
+                <div key={i} className="flex items-start gap-3 px-5 py-3.5" style={{ borderBottom: i === arr.length - 1 ? "none" : "1px solid #d9efe0" }}>
+                  <span className="grid place-items-center w-8 h-8 rounded-full shrink-0 mt-0.5" style={{ background: "#e2f4e8", color: "var(--ap-pass)" }}><ShieldCheck className="w-[17px] h-[17px]" /></span>
+                  <div className="min-w-0">
+                    <div className="text-[14px] font-semibold" style={{ color: "var(--ap-ink)" }}>{t}</div>
+                    <div className="text-[13px] leading-[1.5] mt-0.5" style={{ color: "var(--ap-muted)" }}>{d}</div>
+                  </div>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-full shrink-0 ml-auto" style={{ background: "#e2f4e8", color: "var(--ap-pass)" }}>{tag}</span>
+                </div>
+              ))}
             </div>
 
             <div className="text-[13px] font-semibold mt-7 mb-3" style={{ color: "var(--ap-ink)" }}>이 스캔 방식이 다루지 않는 것 <span className="font-normal" style={{ color: "var(--ap-muted2)" }}>· 별도 방식이 필요합니다</span></div>
             <div className="rounded-[18px] bg-white ap-hair overflow-hidden">
               {[
-                [<Bug className="w-[17px] h-[17px]" />, "주입 공격 (SQLi · XSS · SSRF · 경로 탐색)", "권한·격리를 실행으로 확정하는 엔진입니다. 페이로드를 퍼징해 뚫는 주입 계열은 다른 엔진의 영역입니다."],
-                [<Package className="w-[17px] h-[17px]" />, "소스코드 · 의존성 · git 시크릿 (SCA · SAST)", "밖에서 실행만 보는 블랙박스 방식입니다. 취약 패키지·커밋된 키·정적 결함은 레포를 연결해야 봅니다."],
                 [<Workflow className="w-[17px] h-[17px]" />, "비즈니스 로직 · 레이스 컨디션", "가격 조작·수량 음수·결제 흐름 우회·동시성 문제는 앱 고유 규칙을 알아야 판단됩니다."],
                 [<Gauge className="w-[17px] h-[17px]" />, "속도 제한 · 무차별 대입", "당신 서비스에 부하를 주지 않으려고 일부러 몰아치지 않습니다. 레이트리밋은 별도로 점검하세요."],
               ].map(([ic, t, d]: any, i, arr) => (
@@ -555,7 +573,7 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <p className="text-[12.5px] mt-3" style={{ color: "var(--ap-muted2)" }}>가드레일은 <b className="font-semibold" style={{ color: "var(--ap-ink)" }}>“남의 데이터가 새는가”</b>(권한·격리·RLS·시크릿)를 실행으로 확정하는 데 집중합니다. 위 항목은 SCA·SAST·퍼징 도구와 함께 쓰면 빈틈이 없습니다.</p>
+            <p className="text-[12.5px] mt-3" style={{ color: "var(--ap-muted2)" }}>가드레일은 <b className="font-semibold" style={{ color: "var(--ap-ink)" }}>“남의 데이터가 새는가”</b>(권한·격리·RLS·시크릿·주입)를 실행으로 확정하는 데 집중합니다. 위 두 항목만 앱 고유 규칙·부하 제어가 필요해 별도 방식으로 점검하세요.</p>
           </Band>
 
           {/* watch — white */}
