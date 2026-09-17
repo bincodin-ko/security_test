@@ -1,0 +1,387 @@
+<title>가드레일 스캔</title>
+<meta name="description" content="바이브코딩으로 만든 앱의 보안 취약점을 실제로 공격해 증명하고, 고칠 프롬프트까지 주는 스캔 리포트" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&family=JetBrains+Mono:wght@400;500;700&display=swap" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.460.0/lucide.min.js"></script>
+<style>
+  :root{
+    --bg:#0b0f17; --surface:#141a26; --surface-2:#1a2130; --border:#232c3d;
+    --border-soft:#1c2433; --text:#e6edf7; --muted:#8a97ab; --faint:#5b6779;
+    --accent:#3ea6ff; --accent-dim:#1e3a52;
+    --crit:#f0464a; --crit-bg:#2a1116; --warn:#f5a524; --warn-bg:#2a2010; --pass:#2fbf71; --pass-bg:#0f2419;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:'Noto Sans KR',system-ui,sans-serif;
+    --display:'Black Han Sans',var(--sans);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding-inline:20px;padding-block:0}
+  a{color:inherit}
+  h1,h2,h3{text-wrap:balance;margin:0}
+  .mono{font-family:var(--mono)}
+  .tnum{font-variant-numeric:tabular-nums}
+
+  /* top bar */
+  header.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;
+    background:rgba(11,15,23,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+  .bar-in{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-block:14px}
+  .brand{display:flex;align-items:center;gap:9px;font-family:var(--display);font-size:20px;letter-spacing:.5px}
+  .brand .dot{width:11px;height:11px;border-radius:3px;background:var(--accent);box-shadow:0 0 0 4px var(--accent-dim)}
+  .target{display:flex;align-items:center;gap:8px;margin-left:auto;min-width:0;
+    background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:7px 12px;font-family:var(--mono);font-size:13px;color:var(--muted)}
+  .target b{color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .btn{display:inline-flex;align-items:center;gap:7px;border-radius:9px;border:1px solid var(--border);
+    background:var(--surface);color:var(--text);font-family:var(--sans);font-size:13px;font-weight:500;
+    padding:8px 13px;cursor:pointer;transition:border-color .15s,background .15s}
+  .btn:hover{border-color:var(--accent);background:var(--surface-2)}
+  .btn.primary{background:var(--accent);color:#04121f;border-color:var(--accent);font-weight:700}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .btn svg{width:15px;height:15px}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  /* hero summary */
+  .lede{padding-block:26px 8px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--accent)}
+  .lede h1{font-family:var(--display);font-size:clamp(28px,5vw,40px);line-height:1.08;margin-top:10px}
+  .lede p{color:var(--muted);margin-top:12px;max-width:60ch;font-size:15px}
+  .lede .stamp{color:var(--crit);font-weight:700}
+
+  .summary{display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-top:22px}
+  .verdicts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .vtile{border:1px solid var(--border);border-radius:13px;padding:16px 16px 15px;background:var(--surface);position:relative;overflow:hidden}
+  .vtile::before{content:"";position:absolute;inset:0 auto 0 0;width:4px}
+  .vtile.c::before{background:var(--crit)} .vtile.w::before{background:var(--warn)} .vtile.p::before{background:var(--pass)}
+  .vtile .n{font-family:var(--mono);font-weight:700;font-size:40px;line-height:1;letter-spacing:-1px}
+  .vtile.c .n{color:var(--crit)} .vtile.w .n{color:var(--warn)} .vtile.p .n{color:var(--pass)}
+  .vtile .lab{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--muted)}
+  .vtile .lab svg{width:14px;height:14px}
+  .vtile .sub{font-size:12px;color:var(--faint);margin-top:3px}
+
+  .donut{border:1px solid var(--border);border-radius:13px;background:var(--surface);padding:16px;display:flex;flex-direction:column}
+  .donut h3{font-size:13px;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:6px}
+  .donut h3 svg{width:14px;height:14px;color:var(--accent)}
+  .donut .cvs{flex:1;position:relative;min-height:150px;display:flex;align-items:center;justify-content:center}
+  .donut .center{position:absolute;text-align:center;pointer-events:none}
+  .donut .center b{font-family:var(--mono);font-size:26px;display:block;line-height:1}
+  .donut .center span{font-size:11px;color:var(--muted)}
+
+  /* section head */
+  .shead{display:flex;align-items:baseline;gap:12px;margin:34px 0 4px}
+  .shead h2{font-family:var(--display);font-size:22px}
+  .shead .meta{font-family:var(--mono);font-size:12px;color:var(--faint);margin-left:auto}
+
+  /* cluster cards */
+  .clusters{display:flex;flex-direction:column;gap:12px;margin-top:14px}
+  .card{border:1px solid var(--border);border-radius:13px;background:var(--surface);overflow:hidden;
+    display:grid;grid-template-columns:5px 1fr;transition:border-color .15s}
+  .card:hover{border-color:#31435c}
+  .card .stripe{background:var(--crit)}
+  .card.sev4 .stripe{background:var(--warn)}
+  .card .body{padding:15px 17px}
+  .crow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .sev{font-family:var(--mono);font-weight:700;font-size:12px;padding:3px 8px;border-radius:6px;background:var(--crit-bg);color:var(--crit);border:1px solid #43181d}
+  .card.sev4 .sev{background:var(--warn-bg);color:var(--warn);border-color:#402d0e}
+  .route{font-family:var(--mono);font-size:14px;font-weight:500}
+  .method{color:var(--accent);font-weight:700}
+  .invs{display:flex;gap:5px;margin-left:auto}
+  .inv{font-family:var(--mono);font-size:11px;color:var(--muted);border:1px solid var(--border);border-radius:5px;padding:2px 6px}
+  .title{font-weight:700;font-size:15px;margin-top:11px}
+  .cause{color:var(--muted);font-size:13.5px;margin-top:4px}
+  .cause b{color:var(--text);font-weight:500}
+
+  .evidence{margin-top:12px;border:1px solid var(--border-soft);border-radius:9px;background:#0c1119;overflow:hidden}
+  .evidence .ehead{display:flex;align-items:center;gap:7px;padding:8px 11px;border-bottom:1px solid var(--border-soft);
+    font-size:11.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--pass);font-family:var(--mono)}
+  .evidence .ehead svg{width:13px;height:13px}
+  .evidence pre{margin:0;padding:11px 13px;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:#c7d3e5;overflow-x:auto;white-space:pre-wrap;word-break:break-word}
+  .evidence .redact{color:var(--warn);background:var(--warn-bg);padding:0 4px;border-radius:3px}
+  .evidence .arrow{color:var(--faint)}
+
+  .actions{display:flex;gap:9px;margin-top:13px;flex-wrap:wrap}
+
+  /* fix panel */
+  .fix{grid-column:1/-1;border-top:1px solid var(--border);background:var(--surface-2);padding:0}
+  .fix[hidden]{display:none}
+  .tabs{display:flex;gap:2px;padding:12px 17px 0}
+  .tab{font-size:13px;font-family:var(--sans);font-weight:500;color:var(--muted);background:none;border:none;
+    padding:8px 13px;border-radius:8px 8px 0 0;cursor:pointer;border-bottom:2px solid transparent}
+  .tab[aria-selected=true]{color:var(--text);background:#0c1119;border-bottom-color:var(--accent)}
+  .tab svg{width:14px;height:14px;vertical-align:-2px;margin-right:5px}
+  .panel{padding:15px 17px 18px}
+  .panel[hidden]{display:none}
+  .panel pre{margin:0;background:#0c1119;border:1px solid var(--border-soft);border-radius:9px;padding:13px;
+    font-family:var(--mono);font-size:12.5px;line-height:1.65;overflow-x:auto;white-space:pre-wrap;word-break:break-word;color:#c7d3e5}
+  .diff .add{color:var(--pass)} .diff .del{color:var(--crit)} .diff .ctx{color:var(--faint)}
+  .copybar{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+  .copybar span{font-size:12.5px;color:var(--muted)}
+  .reverify{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .reverify .res{font-family:var(--mono);font-size:13px;padding:9px 13px;border-radius:9px;border:1px solid var(--border);color:var(--muted)}
+  .reverify .res.ok{color:var(--pass);border-color:#1c4a33;background:var(--pass-bg)}
+
+  /* needs-check + passed compact */
+  .compact{border:1px solid var(--border);border-radius:13px;background:var(--surface);margin-top:14px;overflow:hidden}
+  .crow2{display:flex;align-items:center;gap:11px;padding:12px 16px;border-bottom:1px solid var(--border-soft);font-size:13.5px}
+  .crow2:last-child{border-bottom:none}
+  .crow2 .q{color:var(--warn)} .crow2 .k{color:var(--pass)}
+  .crow2 .r{font-family:var(--mono);font-size:13px}
+  .crow2 .why{color:var(--faint);font-size:12.5px;margin-left:auto;text-align:right}
+
+  /* watch strip */
+  .watch{margin:30px 0 40px;border:1px dashed var(--border);border-radius:13px;background:linear-gradient(180deg,var(--surface),transparent);padding:18px 20px}
+  .watch h3{font-family:var(--display);font-size:17px;display:flex;align-items:center;gap:9px}
+  .watch h3 svg{width:18px;height:18px;color:var(--accent)}
+  .wgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px}
+  .wcell{background:var(--surface);border:1px solid var(--border-soft);border-radius:9px;padding:11px 13px}
+  .wcell .t{font-size:12px;color:var(--faint);font-family:var(--mono)}
+  .wcell .v{font-size:13.5px;margin-top:3px}
+  .wcell .v b{color:var(--accent)}
+
+  footer{color:var(--faint);font-size:12px;text-align:center;padding-block:22px;border-top:1px solid var(--border-soft)}
+  footer .mono{color:var(--muted)}
+
+  @media (max-width:760px){ .summary{grid-template-columns:1fr} .verdicts{grid-template-columns:repeat(3,1fr)} }
+  @media (max-width:440px){ .vtile .n{font-size:32px} .invs{width:100%;margin-left:0} }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<header class="bar">
+  <div class="wrap bar-in">
+    <div class="brand"><span class="dot"></span>가드레일</div>
+    <div class="target" title="스캔 대상">
+      <svg data-lucide="globe"></svg><b>my-vibe-app.vercel.app</b>
+      <span style="color:var(--faint)">· Next.js + Supabase</span>
+    </div>
+    <button class="btn primary" id="rescan"><svg data-lucide="refresh-cw"></svg>다시 스캔</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="lede">
+    <div class="eyebrow">스캔 완료 · 6분 전</div>
+    <h1>지금 <span class="stamp">6곳</span>에서 남의 데이터가 새고 있습니다</h1>
+    <p>추측이 아닙니다. 계정 두 개로 <b style="color:var(--text)">실제로 공격을 실행</b>해서 뚫리는 것을 확인했습니다.
+       각 항목마다 어떻게 뚫었는지 증거와, AI에게 붙여넣을 수정 프롬프트를 드립니다.</p>
+
+    <div class="summary">
+      <div class="verdicts">
+        <div class="vtile c"><div class="n tnum">6</div><div class="lab"><svg data-lucide="shield-alert"></svg>확정</div><div class="sub">실제로 뚫림</div></div>
+        <div class="vtile w"><div class="n tnum">3</div><div class="lab"><svg data-lucide="help-circle"></svg>확인 필요</div><div class="sub">당신 판단 필요</div></div>
+        <div class="vtile p"><div class="n tnum">48</div><div class="lab"><svg data-lucide="shield-check"></svg>통과</div><div class="sub">검사했고 안전</div></div>
+      </div>
+      <div class="donut">
+        <h3><svg data-lucide="scan-line"></svg>라우트 57개 · 불변식 I1~I6 검사</h3>
+        <div class="cvs"><canvas id="donut" aria-label="확정 6, 확인필요 3, 통과 48"></canvas>
+          <div class="center"><b class="tnum">57</b><span>검사한 엔드포인트</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="shead">
+    <h2>확정된 취약점</h2>
+    <span class="meta">심각도순 · 근본원인별로 묶음 (중복 46% 제거)</span>
+  </div>
+
+  <div class="clusters" id="clusters"></div>
+
+  <div class="shead"><h2>확인이 필요합니다</h2><span class="meta">뚫릴 수 있으나, 의도 여부는 당신만 압니다</span></div>
+  <div class="compact">
+    <div class="crow2"><svg data-lucide="help-circle" class="q" style="width:16px;height:16px"></svg>
+      <span class="r"><span class="method">PATCH</span> /api/me</span>
+      <span>클라이언트가 보낸 <span class="mono">role</span> 값을 서버가 믿을 수 있습니다 (권한 상승 위험)</span>
+      <span class="why">쓰기 테스트 꺼짐<br>—켜면 확정 가능</span></div>
+    <div class="crow2"><svg data-lucide="help-circle" class="q" style="width:16px;height:16px"></svg>
+      <span class="r"><span class="method">POST</span> /api/orders/:id/status</span>
+      <span>결제 상태를 되돌릴 수 있는지 — 합법 여부는 앱 규칙에 달림</span>
+      <span class="why">상태 전이 규칙은<br>당신만 압니다</span></div>
+    <div class="crow2"><svg data-lucide="help-circle" class="q" style="width:16px;height:16px"></svg>
+      <span class="r"><span class="mono">table:</span> api_keys</span>
+      <span>익명에겐 잠겨 있으나 secret 을 담은 테이블 — service_role 유출 시 즉시 노출</span>
+      <span class="why">크라운 주얼<br>—키 관리 점검</span></div>
+  </div>
+
+  <div class="shead"><h2>통과한 검사</h2><span class="meta">이것도 보여드립니다 — 무엇을 검사했는지 알아야 하니까</span></div>
+  <div class="compact">
+    <div class="crow2"><svg data-lucide="check" class="k" style="width:16px;height:16px"></svg>
+      <span class="r"><span class="method">GET</span> /api/cards/:id</span>
+      <span>소유권 검사가 제대로 있음 — 밥이 앨리스 카드를 요청하면 403</span>
+      <span class="why k">격리 유지 ✓</span></div>
+    <div class="crow2"><svg data-lucide="check" class="k" style="width:16px;height:16px"></svg>
+      <span class="r"><span class="mono">table:</span> private_msgs</span>
+      <span>RLS 정상 — 로그인해도 자기 메시지만 보임</span>
+      <span class="why k">소유권 정책 ✓</span></div>
+    <div class="crow2"><svg data-lucide="check" class="k" style="width:16px;height:16px"></svg>
+      <span class="r"><span class="method">GET</span> /api/stats</span>
+      <span>공개 엔드포인트 — 민감 데이터 없음. 권한상승 오탐으로 잡지 않음</span>
+      <span class="why k">의도된 공개 ✓</span></div>
+    <div class="crow2" style="color:var(--faint)"><svg data-lucide="more-horizontal" style="width:16px;height:16px"></svg>
+      <span>그 외 45개 검사 통과</span></div>
+  </div>
+
+  <div class="watch">
+    <h3><svg data-lucide="radar"></svg>배포할 때마다 자동으로 다시 지켜봅니다</h3>
+    <div class="wgrid">
+      <div class="wcell"><div class="t">배포 감지</div><div class="v">새 엔드포인트만 <b>즉시 재검사</b></div></div>
+      <div class="wcell"><div class="t">매일 새벽</div><div class="v">전체 읽기전용 스윕</div></div>
+      <div class="wcell"><div class="t">주 1회</div><div class="v">쓰기·삭제 포함 심층</div></div>
+      <div class="wcell"><div class="t">이번 주</div><div class="v"><b>3회</b> 배포 · 새 API 5개 검사</div></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span class="mono">가드레일</span> · 관측으로 증명 · 시크릿은 리포트에서 <span class="redact" style="color:var(--warn)">마스킹</span>됩니다 · 본인 소유 앱에만 사용
+</footer>
+
+<script>
+const CLUSTERS = [
+  { sev:5, method:'GET', route:'/api/v2/workspaces/:id', invs:['I1','I2','I6'],
+    title:'다른 회사의 워크스페이스와 API 토큰이 통째로 노출됩니다',
+    cause:'소유권 검사가 없습니다. <b>owner_id 비교 한 줄</b>이면 세 가지가 한꺼번에 해결됩니다.',
+    evidence:['밥으로 로그인 → 앨리스 워크스페이스(id=1) 요청 → 성공:',
+      '{"id":1,"owner_id":1,"name":"Alice Corp","api_token":"wtok_ali…[redacted]"}'],
+    fix:'"/api/v2/workspaces/:id" 에서 행을 불러온 뒤, owner 컬럼을 인증된 사용자 id 와 비교해 다르면 403/404 를 반환하세요. GET 뿐 아니라 모든 메서드에서 서버 측으로 검사해야 합니다. 다른 검사를 약화시키지 마세요.',
+    diff:[['ctx','  const ws = await db.workspaces.findById(params.id)'],
+          ['add','+ if (ws.owner_id !== session.user.id)'],
+          ['add','+   return Response.json({error:"forbidden"},{status:403})'],
+          ['ctx','  return Response.json(ws)']] },
+  { sev:5, method:'GET', route:'/api/internal/metrics', invs:['I3','I6'],
+    title:'로그인도 안 하고 DB 비밀번호를 볼 수 있습니다',
+    cause:'내부 전용 엔드포인트에 <b>인증이 없고</b>, 응답에 서버 전용 값이 들어 있습니다.',
+    evidence:['토큰 없이 요청 → 200 OK:',
+      '{"signups_today":42,"db_password":"prod…[redacted]","active_sessions":3}'],
+    fix:'"/api/internal/metrics" 에 인증 미들웨어를 붙이고, 응답에서 db_password 같은 서버 전용 필드를 제거하세요. 라우트 표를 확인하세요 — 보호된 라우터 밖에 등록된 것이 흔한 원인입니다.',
+    diff:[['del','- export async function GET() {'],
+          ['add','+ export const GET = withAuth(async () => {'],
+          ['del','-   return Response.json({ signups_today, db_password, active_sessions })'],
+          ['add','+   return Response.json({ signups_today, active_sessions })'],
+          ['ctx','  })']] },
+  { sev:5, method:'GET', route:'/api/notes/:id', invs:['I1'],
+    title:'아무 글이나 남의 것을 읽을 수 있습니다',
+    cause:'ID만 바꾸면 다른 사용자의 글이 그대로 옵니다 (IDOR).',
+    evidence:['밥 토큰으로 앨리스 글(id=1) 요청 → 내용 그대로 수신:',
+      '{"id":1,"owner_id":1,"title":"Alice private","body":"alice sec…[redacted]"}'],
+    fix:'"/api/notes/:id" 에서 글을 불러온 뒤 owner_id 를 인증된 사용자와 비교하세요. 삭제(DELETE) 경로에도 같은 검사를 넣으세요 — 읽기만 막고 삭제를 열어두는 실수가 흔합니다.',
+    diff:[['ctx','  const note = db.prepare("SELECT * FROM notes WHERE id=?").get(id)'],
+          ['add','+ if (note.owner_id !== req.user.id) return res.status(403).end()'],
+          ['ctx','  res.json(note)']] },
+  { sev:5, method:'GET', route:'/api/search', invs:['I2'],
+    title:'검색하면 남의 비공개 글까지 결과에 나옵니다',
+    cause:'검색 쿼리에 <b>본인 소유 필터가 없어</b> 전체 테이블을 뒤집니다.',
+    evidence:['밥이 "Alice" 로 검색 → 앨리스의 비공개 글이 결과에:',
+      '[{"id":1,"owner_id":1,"title":"Alice private",…}]'],
+    fix:'검색 쿼리에 WHERE owner_id = :me 를 추가하세요. 목록·검색 API 는 항상 호출자 소유로 범위를 좁혀야 합니다. UI 에서 숨기는 것은 통제가 아닙니다.',
+    diff:[['del','- SELECT * FROM notes WHERE title LIKE ?'],
+          ['add','+ SELECT * FROM notes WHERE title LIKE ? AND owner_id = ?']] },
+  { sev:5, method:'GET', route:'/api/admin/users', invs:['I2','I6'],
+    title:'일반 사용자가 관리자 회원 목록을 통째로 봅니다',
+    cause:'로그인만 하면 접근됩니다 — <b>역할(role) 검사가 없습니다</b>. 응답엔 비밀번호 해시까지 포함됩니다.',
+    evidence:['밥(일반 사용자) 토큰으로 관리자 API 요청 → 200, 3명 전원:',
+      '[{"id":1,"email":"al…@…[redacted]","password_hash":"7abd…[redacted]"}, …]'],
+    fix:'"/api/admin/users" 를 역할 검사 뒤로 옮기고(관리자만), 응답에서 password_hash 를 제거하세요. SELECT * 대신 필요한 컬럼만 명시하거나 공용 시리얼라이저로 민감 컬럼을 걸러내세요.',
+    diff:[['add','+ if (req.user.role !== "admin") return res.status(403).end()'],
+          ['del','- res.json(db.prepare("SELECT * FROM users").all())'],
+          ['add','+ res.json(db.prepare("SELECT id,email,role FROM users").all())']] },
+  { sev:5, method:'TABLE', route:'documents (Supabase RLS)', invs:['auth.uid'],
+    title:'로그인한 사람은 누구나 모든 문서를 읽습니다',
+    cause:'RLS 정책이 <b>"소유"가 아니라 "로그인 여부"만</b> 검사합니다. 두 계정이 서로의 문서를 다 봅니다.',
+    evidence:['앨리스·밥 각각 조회 → 완전히 동일한 2행 수신:',
+      '[{"id":1,"owner":1,"content":"alice doc"},{"id":2,"owner":2,"content":"bob doc"}]'],
+    fix:'documents 테이블의 RLS 정책을 고치세요. USING (auth.uid() IS NOT NULL) 를 USING (owner = auth.uid()) 로 바꾸면 각자 자기 행만 보게 됩니다.',
+    diff:[['del','- CREATE POLICY p ON documents USING (auth.uid() IS NOT NULL);'],
+          ['add','+ CREATE POLICY p ON documents USING (owner = auth.uid());']] },
+];
+
+function esc(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+function redactHTML(s){return esc(s).replace(/\[redacted\]/g,'<span class="redact">redacted</span>')}
+function diffHTML(rows){return rows.map(([k,t])=>`<span class="${k}">${esc(t)}</span>`).join('\n')}
+
+const wrap = document.getElementById('clusters');
+CLUSTERS.forEach((c,i)=>{
+  const el = document.createElement('div');
+  el.className = 'card' + (c.sev===4?' sev4':'');
+  el.innerHTML = `
+    <div class="stripe"></div>
+    <div class="body">
+      <div class="crow">
+        <span class="sev">${c.sev}/5</span>
+        <span class="route"><span class="method">${c.method}</span> ${esc(c.route)}</span>
+        <span class="invs">${c.invs.map(v=>`<span class="inv">${v}</span>`).join('')}</span>
+      </div>
+      <div class="title">${esc(c.title)}</div>
+      <div class="cause">근본원인: ${c.cause}</div>
+      <div class="evidence">
+        <div class="ehead"><svg data-lucide="crosshair"></svg>실제로 이렇게 뚫었습니다</div>
+        <pre>${redactHTML(c.evidence[0])}\n<span class="arrow">→</span> ${redactHTML(c.evidence[1])}</pre>
+      </div>
+      <div class="actions">
+        <button class="btn primary" data-fix="${i}"><svg data-lucide="wrench"></svg>고치기</button>
+        <button class="btn" data-why="${i}"><svg data-lucide="book-open"></svg>왜 위험한가요?</button>
+      </div>
+      <div class="fix" id="fix${i}" hidden>
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" aria-selected="true"  data-t="p" data-i="${i}"><svg data-lucide="sparkles"></svg>AI 프롬프트</button>
+          <button class="tab" role="tab" aria-selected="false" data-t="d" data-i="${i}"><svg data-lucide="file-diff"></svg>수정 코드</button>
+          <button class="tab" role="tab" aria-selected="false" data-t="v" data-i="${i}"><svg data-lucide="shield-check"></svg>재검증</button>
+        </div>
+        <div class="panel" id="p${i}p">
+          <div class="copybar"><button class="btn" data-copy="${i}"><svg data-lucide="copy"></svg>프롬프트 복사</button>
+            <span>Cursor·Claude Code 에 붙여넣으면 바로 고칩니다</span></div>
+          <pre id="prompt${i}">${esc(c.fix)}</pre>
+        </div>
+        <div class="panel diff" id="p${i}d" hidden><pre>${diffHTML(c.diff)}</pre></div>
+        <div class="panel" id="p${i}v" hidden>
+          <div class="reverify">
+            <button class="btn primary" data-rv="${i}"><svg data-lucide="play"></svg>같은 공격 다시 실행</button>
+            <span class="res" id="rv${i}">고친 뒤 눌러 확인하세요</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  wrap.appendChild(el);
+});
+
+// interactions
+document.addEventListener('click', e=>{
+  const fix = e.target.closest('[data-fix]'); const why = e.target.closest('[data-why]');
+  if(fix||why){ const i=(fix||why).dataset.fix??(fix||why).dataset.why;
+    const p=document.getElementById('fix'+i); p.hidden=!p.hidden;
+    if(!p.hidden) selTab(i,'p');
+    return; }
+  const tab = e.target.closest('.tab'); if(tab){ selTab(tab.dataset.i, tab.dataset.t); return; }
+  const cp = e.target.closest('[data-copy]');
+  if(cp){ const t=document.getElementById('prompt'+cp.dataset.copy).textContent;
+    navigator.clipboard?.writeText(t).catch(()=>{});
+    cp.innerHTML='<svg data-lucide="check"></svg>복사됨'; lucide.createIcons();
+    setTimeout(()=>{cp.innerHTML='<svg data-lucide="copy"></svg>프롬프트 복사';lucide.createIcons()},1600); return; }
+  const rv = e.target.closest('[data-rv]');
+  if(rv){ const box=document.getElementById('rv'+rv.dataset.rv);
+    box.textContent='공격 재실행 중…'; box.className='res';
+    setTimeout(()=>{ box.innerHTML='이제 막힙니다 ✓  <b>403 Forbidden</b>'; box.className='res ok'; },900); return; }
+});
+function selTab(i,t){
+  ['p','d','v'].forEach(k=>{
+    document.getElementById('p'+i+k).hidden = (k!==t);
+    const btn=document.querySelector(`.tab[data-i="${i}"][data-t="${k}"]`);
+    if(btn) btn.setAttribute('aria-selected', k===t);
+  });
+}
+document.getElementById('rescan').addEventListener('click',function(){
+  this.innerHTML='<svg data-lucide="loader"></svg>스캔 중…'; lucide.createIcons();
+  setTimeout(()=>{ this.innerHTML='<svg data-lucide="refresh-cw"></svg>다시 스캔'; lucide.createIcons(); },1400);
+});
+
+// donut
+const ctx = document.getElementById('donut');
+new Chart(ctx,{type:'doughnut',
+  data:{labels:['확정','확인 필요','통과'],datasets:[{data:[6,3,48],
+    backgroundColor:['#f0464a','#f5a524','#2fbf71'],borderColor:'#141a26',borderWidth:3,hoverOffset:4}]},
+  options:{cutout:'72%',plugins:{legend:{display:false},tooltip:{
+    bodyFont:{family:"'JetBrains Mono'"},callbacks:{label:c=>` ${c.label}: ${c.raw}개`}}},
+    responsive:true,maintainAspectRatio:false}});
+
+lucide.createIcons();
+</script>
